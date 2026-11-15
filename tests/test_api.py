@@ -31,6 +31,7 @@ def test_timeline_merges_labs_and_events(client):
     client.post("/labs", json={"taken_on": "2026-11-01", "analyte": "Ferritin",
                                "value": 20, "unit": "µg/l", "ref_low": 30, "ref_high": 300})
     tl = client.get("/timeline").json()
+    assert isinstance(tl[0]["id"], int)                                  # kvůli mazání v UI
     assert [i["title"] for i in tl] == ["Kolonoskopie", "Krevní rozbory"]
     assert tl[1]["out_of_range"] is True and tl[1]["count"] == 1
 
@@ -289,3 +290,11 @@ def test_old_lab_table_is_migrated_with_data():
     assert [tuple(r) for r in db.execute("SELECT analyte, value, value_text FROM lab_result")] == [("Ferritin", 50.0, "")]
     db.execute("INSERT INTO lab_result (taken_on, analyte, value_text) VALUES ('2025-01-02', 'Glukóza (moč)', 'neg')")
     connect(path).close()                                                                         # druhé otevření nesmí nic rozbít
+
+
+def test_delete_event(client):
+    eid = client.post("/events", json={"day": "2026-07-13", "kind": "exam", "title": "Kolonoskopie"}).json()["id"]
+    assert client.delete(f"/events/{eid}").status_code == 204
+    assert client.get("/events").json() == []
+    assert client.delete(f"/events/{eid}").status_code == 404
+    assert TestClient(app).delete("/events/1").status_code == 401

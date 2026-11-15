@@ -91,6 +91,15 @@
   .nahled .tablewrap { max-height:340px; }
   td.mimo { color:var(--err); font-weight:700; }
   td.nazev small, .ref { color:var(--text-secondary); font-weight:400; }
+  .legenda { color:var(--text-secondary); font-size:.85rem; margin:0 0 10px; }
+  .osa-radek { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
+  .osa-radek .poznamka { display:block; color:var(--text-secondary); font-size:.88rem; margin-top:2px; white-space:pre-wrap; }
+  .osa-radek button { padding:2px 10px; border-radius:8px; flex:none; }
+  .forma { display:grid; grid-template-columns:auto auto 1fr; gap:8px; align-items:center; margin:10px 0 16px; }
+  .forma textarea, .forma input[type=text], .forma input[type=date] { font:inherit; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:var(--tile); color:var(--text); min-width:0; }
+  .forma textarea { grid-column:1 / -1; min-height:64px; }
+  .forma .akce { grid-column:1 / -1; display:flex; gap:10px; align-items:center; }
+  @media (max-width:560px) { .forma { grid-template-columns:1fr; } }
   @media (prefers-reduced-motion: reduce) { .grafy { transition:none; } }
 </style>
 </head>
@@ -122,6 +131,7 @@
       <button type="button" data-dny="365" aria-pressed="false">rok</button>
       <button type="button" class="vpravo" id="prepni" aria-pressed="false">Zobrazit tabulku</button>
     </div>
+    <p class="legenda" id="legenda" hidden>▲ na ose = vyšetření, rozbor nebo jiná událost (najetím se zobrazí název)</p>
     <div class="grafy" id="grafy"></div>
     <div class="tablewrap" id="tabulka" hidden><table id="tab"></table></div>
   </section>
@@ -144,6 +154,16 @@
 
   <section id="osa-sekce" hidden>
     <h2>Časová osa (vyšetření a rozbory)</h2>
+    <form class="forma" id="forma-udalost">
+      <input type="date" id="u-den" required aria-label="Datum události">
+      <select id="u-druh" aria-label="Druh události">
+        <option value="exam">Vyšetření</option><option value="genetics">Genetika</option>
+        <option value="medication">Léky</option><option value="other">Jiné</option>
+      </select>
+      <input type="text" id="u-nazev" required maxlength="120" placeholder="Název (např. Kolonoskopie)" aria-label="Název události">
+      <textarea id="u-pozn" maxlength="2000" placeholder="Poznámka: nález, závěr, doporučení…" aria-label="Poznámka"></textarea>
+      <div class="akce"><button class="primary" type="submit">Přidat událost</button><span class="msg" id="u-stav" role="status"></span></div>
+    </form>
     <ul id="osa"></ul>
     <p class="msg" id="osa-prazdna" hidden>Zatím žádná vyšetření ani rozbory.</p>
   </section>
@@ -172,7 +192,7 @@
       let detail = ""; try { detail = (await r.json()).detail; } catch (e) {}
       throw new Chyba(r.status, typeof detail === "string" && detail ? detail : "Chyba " + r.status);
     }
-    return r.json();
+    return r.status === 204 ? null : r.json();       // DELETE vrací prázdné tělo
   }
 
   // ---------- definice grafů: jedna metrika = jeden graf, jedna barva (bez legendy, název je v hlavičce) ----------
@@ -192,7 +212,7 @@
   const kratce = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
-  const stav = { rozsah: 30, metriky: [], tabulka: false };
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -248,6 +268,15 @@
     const popisky = n > 1 ? [0, Math.round((n - 1) / 2), n - 1] : [0];   // osa x: začátek, střed, konec
     popisky.forEach((i, k) => svg.append(el("text", { x: X(i), y: H - 6, "text-anchor": k === 0 && n > 1 ? "start" : k === popisky.length - 1 && n > 1 ? "end" : "middle" }, kratce(seznamDnu[i]))));
 
+    // události a odběry na ose x: tenká čára + trojúhelník; název se ukáže v tooltipu
+    const naDni = new Map();
+    for (const u of stav.osa) { const i = seznamDnu.indexOf(u.day); if (i >= 0) (naDni.get(i) || naDni.set(i, []).get(i)).push(u.title); }
+    for (const i of naDni.keys()) {
+      const x = X(i), yb = o.t + ph;
+      svg.append(el("line", { x1: x, x2: x, y1: o.t, y2: yb, stroke: "var(--axis)", "stroke-width": 1 }));
+      svg.append(el("path", { d: `M${x - 4},${yb + 7} L${x + 4},${yb + 7} L${x},${yb + 1} Z`, fill: "var(--text-secondary)" }));
+    }
+
     const sloupky = [];
     if (def.typ === "sloupce") {                       // sloupce: ≤ 24 px, zaoblený horní konec, rovná základna
       const pasmo = pw / n, sirka = Math.max(1, Math.min(24, pasmo > 6 ? pasmo - 2 : pasmo * 0.7));
@@ -294,7 +323,9 @@
         const jm = document.createElement("span"); jm.className = "jmeno"; jm.textContent = def.nazev;
         radek.append(klic, hod, jm);
       }
-      tip.append(den, radek); tip.hidden = false;
+      tip.append(den, radek);
+      for (const t of naDni.get(i) || []) { const u = document.createElement("div"); u.className = "radek"; u.textContent = "▲ " + t; tip.append(u); }
+      tip.hidden = false;
       const rk = karta.getBoundingClientRect(), rs = svg.getBoundingClientRect();
       const px = rs.left - rk.left + (x / W) * rs.width, sirkaTip = tip.offsetWidth;
       const vpravo = px + 12 + sirkaTip <= rk.width - 4;          // tooltip vedle nitkového kříže, ne přes něj
@@ -358,19 +389,43 @@
     if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
   }
 
-  function vykresliVse() { $("garmin").hidden = false; vykresliGrafy(); vykresliTabulku(); }
+  function vykresliVse() { $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); }
 
+  const DRUHY = { exam: "Vyšetření", genetics: "Genetika", medication: "Léky", other: "Jiné" };
   function vykresliOsu(data) {
     $("osa-sekce").hidden = false; $("osa").replaceChildren();
     $("osa-prazdna").hidden = data.length > 0;
-    for (const i of data) {
-      const li = document.createElement("li");
-      li.textContent = `${i.day} · ${i.title}` + (i.type === "lab" ? `: ${i.count} hodnot` : "");
-      if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = ` ⚠ ${i.out_of_range_count} mimo rozsah`; li.append(o); }
-      $("osa").append(li);
+    for (const i of [...data].sort((a, b) => (a.day < b.day ? 1 : -1))) {               // nejnovější nahoře
+      const li = document.createElement("li"), radek = document.createElement("div"); radek.className = "osa-radek";
+      const text = document.createElement("div");
+      text.append(document.createTextNode(`${i.day} · ` + (i.type === "event" ? `${DRUHY[i.kind] || "Jiné"}: ${i.title}` : `${i.title}: ${i.count} hodnot`)));
+      if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = ` ⚠ ${i.out_of_range_count} mimo rozsah`; text.append(o); }
+      if (i.note) { const n = document.createElement("span"); n.className = "poznamka"; n.textContent = i.note; text.append(n); }
+      radek.append(text);
+      if (i.type === "event") {
+        const x = document.createElement("button"); x.type = "button"; x.textContent = "Smazat"; x.setAttribute("aria-label", `Smazat událost ${i.title}`);
+        x.addEventListener("click", async () => {
+          if (!confirm(`Smazat událost „${i.title}“ (${i.day})?`)) return;
+          try { await api("/events/" + i.id, { method: "DELETE" }); await nacti(); }
+          catch (e) { $("u-stav").textContent = "Smazání se nepodařilo: " + e.message; $("u-stav").className = "msg err"; }
+        });
+        radek.append(x);
+      }
+      li.append(radek); $("osa").append(li);
     }
   }
-
+  $("u-den").value = lokalniDen(new Date());
+  $("forma-udalost").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const tl = e.submitter || e.target.querySelector("button"); tl.disabled = true;
+    try {
+      await api("/events", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ day: $("u-den").value, kind: $("u-druh").value, title: $("u-nazev").value.trim(), note: $("u-pozn").value.trim() }) });
+      $("u-nazev").value = ""; $("u-pozn").value = ""; $("u-stav").textContent = "Přidáno."; $("u-stav").className = "msg ok";
+      await nacti();
+    } catch (err) { $("u-stav").textContent = "Uložení se nepodařilo: " + err.message; $("u-stav").className = "msg err"; }
+    finally { tl.disabled = false; }
+  });
 
   // ---------- krevní rozbory ----------
   const mimoRozsah = (r) => r.value != null && ((r.ref_low != null && r.value < r.ref_low) || (r.ref_high != null && r.value > r.ref_high));
@@ -451,7 +506,7 @@
     try {
       const od = dny(365)[0];
       const [osa, metriky, rozbory] = await Promise.all([api("/timeline"), api("/metrics?from=" + od), api("/labs")]);
-      stav.metriky = metriky;
+      stav.metriky = metriky; stav.osa = osa;
       $("stav").textContent = ""; $("ovladani").hidden = false;
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
     } finally { $("grafy").classList.remove("nacitam"); }

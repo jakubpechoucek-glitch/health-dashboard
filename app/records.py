@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 
 router = APIRouter(tags=["data"])
@@ -72,6 +72,14 @@ def add_event(item: EventIn, db: sqlite3.Connection = Depends(get_db)):
     return {"id": cur.lastrowid}
 
 
+@router.delete("/events/{event_id}", status_code=204)
+def delete_event(event_id: int, db: sqlite3.Connection = Depends(get_db)):
+    cur = db.execute("DELETE FROM health_event WHERE id = ?", (event_id,))
+    db.commit()
+    if cur.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Událost neexistuje")
+
+
 @router.get("/events")
 def list_events(db: sqlite3.Connection = Depends(get_db)):
     return [dict(r) for r in db.execute("SELECT * FROM health_event ORDER BY day")]
@@ -100,7 +108,7 @@ def list_metrics(
 def timeline(db: sqlite3.Connection = Depends(get_db)):
     """Společná časová osa: události + krevní rozbory (metriky jsou přes /metrics)."""
     items = [
-        {"day": r["day"], "type": "event", "kind": r["kind"], "title": r["title"], "note": r["note"]}
+        {"id": r["id"], "day": r["day"], "type": "event", "kind": r["kind"], "title": r["title"], "note": r["note"]}
         for r in db.execute("SELECT * FROM health_event")
     ]
     for r in db.execute(

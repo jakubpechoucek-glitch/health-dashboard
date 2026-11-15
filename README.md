@@ -28,7 +28,7 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 | GET | `/metrics?metric=&from=&to=` | denní metriky (kroky, klidový tep, spánek…) |
 | POST/GET | `/labs` | krevní rozbory (ruční zadání, výpis) |
 | POST | `/labs/import/preview`, `/labs/bulk` | import rozborů z PDF s náhledem |
-| POST/GET | `/events` | události (vyšetření, výsledek genetiky, změna léků) |
+| POST/GET, DELETE `/events/{id}` | `/events` | události (vyšetření, výsledek genetiky, změna léků) |
 | GET | `/timeline` | události + rozbory seřazené v čase, s příznakem mimo referenční rozsah |
 
 ## Dokumentace
