@@ -6,29 +6,83 @@
 <meta name="robots" content="noindex">
 <title>Zdravotní přehled</title>
 <style>
-  :root { --bg:#f4f2ee; --text:#1c1c1e; --muted:#66656b; --line:#dedad2; --tile:#fff; --accent:#e5484d; --ok:#1f7a5c; --err:#b3261e; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#121214; --text:#ececef; --muted:#9b9aa2; --line:#2b2b30; --tile:#1c1c20; --accent:#ff6b70; --ok:#4cc79a; --err:#ff8a80; } }
+  :root {
+    color-scheme: light;
+    --bg:#f4f2ee; --text:#0b0b0b; --muted:#52514e; --line:#dedad2; --tile:#ffffff;
+    --surface-1:#fcfcfb; --text-secondary:#52514e; --text-muted:#898781;
+    --grid:#e1e0d9; --axis:#c3c2b7; --series-1:#2a78d6; --series-1-hover:#5598e7;
+    --err:#b3261e; --ok:#006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
+      --surface-1:#1a1a19; --text-secondary:#c3c2b7;
+      --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
+      --err:#ff8a80; --ok:#0ca30c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
+    --surface-1:#1a1a19; --text-secondary:#c3c2b7;
+    --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
+    --err:#ff8a80; --ok:#0ca30c;
+  }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,sans-serif; }
-  main { max-width:860px; margin:0 auto; padding:28px 16px 64px; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:28px 16px 64px; }
   h1 { font-size:1.6rem; margin:0 0 4px; }
   h2 { font-size:1.1rem; margin:28px 0 10px; }
-  .msg { color:var(--muted); margin:6px 0; }
+  a { color:inherit; }
+  .msg { color:var(--text-secondary); margin:6px 0; }
   .msg.err { color:var(--err); } .msg.ok { color:var(--ok); }
   .bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px; }
-  button, select { font:inherit; padding:9px 16px; border-radius:999px; border:1px solid var(--line); background:var(--tile); color:var(--text); }
-  button.primary { background:var(--text); color:var(--bg); border-color:var(--text); cursor:pointer; font-weight:600; }
+  button, select { font:inherit; padding:8px 16px; border-radius:999px; border:1px solid var(--line); background:var(--tile); color:var(--text); }
+  button { cursor:pointer; }
+  button.primary { background:var(--text); color:var(--bg); border-color:var(--text); font-weight:600; }
   button:disabled { opacity:.55; cursor:progress; }
-  .tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--tile); }
+  button:focus-visible, svg:focus-visible { outline:2px solid var(--series-1); outline-offset:2px; }
+
+  /* filtr: jedna řada nad grafy */
+  .filtr { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:22px 0 12px; }
+  .filtr .nazev { color:var(--text-secondary); margin-right:4px; }
+  .filtr button[aria-pressed="true"] { font-weight:700; border-color:var(--text); }
+  .filtr button[aria-pressed="true"]::before { content:"✓ "; }
+  .filtr .vpravo { margin-left:auto; }
+
+  /* grafy: malé násobky, jedna metrika = jeden graf */
+  .grafy { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; transition:opacity .15s; }
+  .grafy.nacitam { opacity:.5; }
+  @media (max-width:720px) { .grafy { grid-template-columns:1fr; } }
+  .karta { position:relative; background:var(--surface-1); border:1px solid var(--line); border-radius:14px; padding:14px 14px 8px; }
+  .karta h3 { margin:0; font-size:.9rem; font-weight:600; color:var(--text-secondary); }
+  .karta .hodnota { font-size:1.7rem; font-weight:600; line-height:1.2; margin-top:2px; }
+  .karta .hodnota small { font-size:.85rem; font-weight:400; color:var(--text-secondary); margin-left:4px; }
+  .karta .pod { font-size:.8rem; color:var(--text-secondary); }
+  .plocha { margin-top:6px; min-height:170px; color:var(--text-secondary); font-size:.9rem; }
+  .plocha svg { display:block; width:100%; height:auto; touch-action:pan-y; }
+  .plocha svg text { fill:var(--text-muted); font:11px system-ui,sans-serif; }
+  .tip { position:absolute; pointer-events:none; z-index:2; background:var(--surface-1); color:var(--text);
+         border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:.82rem; line-height:1.35;
+         box-shadow:0 2px 10px rgba(0,0,0,.12); white-space:nowrap; }
+  .tip .den { color:var(--text-secondary); }
+  .tip .radek { display:flex; align-items:center; gap:6px; }
+  .tip .klic { width:12px; height:2px; background:var(--series-1); display:inline-block; }
+  .tip strong { font-weight:700; }
+  .tip .jmeno { color:var(--text-secondary); }
+
+  .tablewrap { overflow:auto; max-height:480px; border:1px solid var(--line); border-radius:12px; background:var(--surface-1); }
   table { border-collapse:collapse; width:100%; font-size:.92rem; white-space:nowrap; }
   th, td { padding:8px 12px; text-align:right; border-bottom:1px solid var(--line); }
   th:first-child, td:first-child { text-align:left; }
-  th { color:var(--muted); font-weight:600; font-size:.8rem; }
+  th { color:var(--text-secondary); font-weight:600; font-size:.8rem; position:sticky; top:0; background:var(--surface-1); }
   tr:last-child td { border-bottom:0; }
   ul { list-style:none; padding:0; margin:0; }
   li { background:var(--tile); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:8px; }
   .out { color:var(--err); font-weight:600; }
+  @media (prefers-reduced-motion: reduce) { .grafy { transition:none; } }
 </style>
 </head>
 <body>
@@ -41,7 +95,7 @@
     <label>za posledních
       <select id="dny">
         <option value="7">7 dní</option>
-        <option value="30">30 dní</option>
+        <option value="30" selected>30 dní</option>
         <option value="90">90 dní</option>
         <option value="365">rok (první import)</option>
       </select>
@@ -51,8 +105,16 @@
   <pre class="msg" id="sync-detail" style="white-space:pre-wrap;font:.8rem/1.5 ui-monospace,monospace;margin:0 0 8px"></pre>
 
   <section id="garmin" hidden>
-    <h2>Garmin: posledních 14 dní</h2>
-    <div class="tablewrap"><table id="tab"></table></div>
+    <div class="filtr" role="group" aria-label="Zobrazené období">
+      <span class="nazev">Zobrazit</span>
+      <button type="button" data-dny="14" aria-pressed="false">14 dní</button>
+      <button type="button" data-dny="30" aria-pressed="true">30 dní</button>
+      <button type="button" data-dny="90" aria-pressed="false">90 dní</button>
+      <button type="button" data-dny="365" aria-pressed="false">rok</button>
+      <button type="button" class="vpravo" id="prepni" aria-pressed="false">Zobrazit tabulku</button>
+    </div>
+    <div class="grafy" id="grafy"></div>
+    <div class="tablewrap" id="tabulka" hidden><table id="tab"></table></div>
   </section>
 
   <section id="osa-sekce" hidden>
@@ -71,7 +133,7 @@
     history.replaceState(null, "", location.pathname + location.search);
   }
   const token = () => { try { return sessionStorage.getItem("token"); } catch (e) { return null; } };
-  const nutnePrihlaseni = (text) => { $("stav").innerHTML = ""; $("stav").append(text + " ");
+  const nutnePrihlaseni = (text) => { $("stav").textContent = text + " ";
     const a = document.createElement("a"); a.href = ROZCESTNIK; a.textContent = "Přihlásit přes Rozcestník"; $("stav").append(a); };
 
   class Chyba extends Error { constructor(status, text) { super(text); this.status = status; } }
@@ -85,34 +147,190 @@
     return r.json();
   }
 
-  // sloupce tabulky: [klíč metriky, nadpis, převod hodnoty]
-  const SLOUPCE = [
-    ["steps", "Kroky", (v) => Math.round(v).toLocaleString("cs-CZ")],
-    ["resting_hr", "Klidový tep", (v) => Math.round(v)],
-    ["sleep_seconds", "Spánek", (v) => (v / 3600).toFixed(1).replace(".", ",") + " h"],
-    ["sleep_score", "Skóre spánku", (v) => Math.round(v)],
-    ["hrv_last_night_avg", "HRV", (v) => Math.round(v) + " ms"],
-    ["avg_stress", "Stres", (v) => Math.round(v)],
-    ["body_battery_max", "Body Battery", (v) => Math.round(v)],
+  // ---------- definice grafů: jedna metrika = jeden graf, jedna barva (bez legendy, název je v hlavičce) ----------
+  const cislo = (v, d = 0) => v.toLocaleString("cs-CZ", { maximumFractionDigits: d, minimumFractionDigits: d });
+  const GRAFY = [
+    { klic: "steps", nazev: "Kroky", typ: "sloupce", fmt: (v) => cislo(v), jednotka: "" },
+    { klic: "resting_hr", nazev: "Klidový tep", typ: "cara", fmt: (v) => cislo(v), jednotka: "tep/min" },
+    { klic: "sleep_seconds", nazev: "Spánek", typ: "sloupce", prevod: (v) => v / 3600, fmt: (v) => cislo(v, 1), jednotka: "h" },
+    { klic: "sleep_score", nazev: "Skóre spánku", typ: "cara", fmt: (v) => cislo(v), jednotka: "" },
+    { klic: "hrv_last_night_avg", nazev: "HRV (minulá noc)", typ: "cara", fmt: (v) => cislo(v), jednotka: "ms" },
+    { klic: "avg_stress", nazev: "Stres (průměr dne)", typ: "cara", fmt: (v) => cislo(v), jednotka: "" },
+    { klic: "body_battery_max", nazev: "Body Battery (maximum dne)", typ: "cara", fmt: (v) => cislo(v), jednotka: "" },
   ];
 
-  function vykresliTabulku(rows) {
-    const dny = {};
-    for (const r of rows) (dny[r.day] ||= {})[r.metric] = r.value;
-    const seznam = Object.keys(dny).sort().reverse().slice(0, 14);
-    $("garmin").hidden = false;
-    const tab = $("tab"); tab.replaceChildren();
-    if (!seznam.length) { const tr = tab.insertRow(); const td = tr.insertCell(); td.colSpan = SLOUPCE.length + 1;
-      td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; return; }
-    const hr = tab.createTHead().insertRow();
-    for (const h of ["Den", ...SLOUPCE.map((s) => s[1])]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
-    const tb = tab.createTBody();
-    for (const den of seznam) {
-      const tr = tb.insertRow();
-      tr.insertCell().textContent = new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" });
-      for (const [klic, , fmt] of SLOUPCE) { const v = dny[den][klic]; tr.insertCell().textContent = v == null ? "–" : fmt(v); }
+  const lokalniDen = (d) => d.toLocaleDateString("sv-SE");           // YYYY-MM-DD v místním čase
+  const dnesni = () => new Date();
+  const kratce = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
+  const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
+
+  const stav = { rozsah: 30, metriky: [], tabulka: false };
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs = {}, text) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // hezká osa y: kroky 1 / 2 / 5 × 10^n
+  function osaY(min, max, pocet = 4) {
+    if (min === max) { min -= 1; max += 1; }
+    const raw = (max - min) / pocet, mag = 10 ** Math.floor(Math.log10(raw)), norm = raw / mag;
+    const krok = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+    const lo = Math.floor(min / krok) * krok, hi = Math.ceil(max / krok) * krok, ticks = [];
+    for (let v = lo; v <= hi + krok / 2; v += krok) ticks.push(+v.toFixed(10));
+    return { lo, hi, ticks };
+  }
+
+  function dny(rozsah) {
+    const out = [], dnes = dnesni();
+    for (let i = rozsah - 1; i >= 0; i--) { const d = new Date(dnes); d.setDate(d.getDate() - i); out.push(lokalniDen(d)); }
+    return out;
+  }
+
+  function hodnotyPro(def, seznamDnu) {
+    const mapa = new Map();
+    for (const r of stav.metriky) if (r.metric === def.klic) mapa.set(r.day, def.prevod ? def.prevod(r.value) : r.value);
+    return seznamDnu.map((d) => (mapa.has(d) ? mapa.get(d) : null));
+  }
+
+  // ---------- jeden graf ----------
+  function nakresli(karta, def, seznamDnu, hodnoty) {
+    const plocha = karta.querySelector(".plocha"), tip = karta.querySelector(".tip");
+    plocha.replaceChildren();
+    const ma = hodnoty.filter((v) => v != null);
+    if (!ma.length) { plocha.textContent = "Žádná data v tomto období."; return; }
+
+    const W = Math.max(240, plocha.clientWidth), H = 170, o = { l: 40, r: 14, t: 10, b: 24 };
+    const pw = W - o.l - o.r, ph = H - o.t - o.b, n = seznamDnu.length;
+    let os;
+    if (def.typ === "sloupce") os = osaY(0, Math.max(...ma));
+    else { const mn = Math.min(...ma), mx = Math.max(...ma), pad = (mx - mn) * 0.15 || 1; os = osaY(mn - pad, mx + pad); }
+    const X = (i) => o.l + ((i + 0.5) / n) * pw;
+    const Y = (v) => o.t + ph - ((v - os.lo) / (os.hi - os.lo)) * ph;
+
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img", tabindex: 0,
+      "aria-label": `${def.nazev}: graf za posledních ${n} dní. Šipkami vlevo a vpravo procházíš dny.` });
+
+    for (const t of os.ticks) {                       // hairline mřížka + popisky osy y
+      svg.append(el("line", { x1: o.l, x2: W - o.r, y1: Y(t), y2: Y(t), stroke: t === os.lo ? "var(--axis)" : "var(--grid)", "stroke-width": 1 }));
+      svg.append(el("text", { x: o.l - 6, y: Y(t) + 4, "text-anchor": "end" }, cislo(t, os.ticks[1] - os.ticks[0] < 1 ? 1 : 0)));
+    }
+    const popisky = n > 1 ? [0, Math.round((n - 1) / 2), n - 1] : [0];   // osa x: začátek, střed, konec
+    popisky.forEach((i, k) => svg.append(el("text", { x: X(i), y: H - 6, "text-anchor": k === 0 && n > 1 ? "start" : k === popisky.length - 1 && n > 1 ? "end" : "middle" }, kratce(seznamDnu[i]))));
+
+    const sloupky = [];
+    if (def.typ === "sloupce") {                       // sloupce: ≤ 24 px, zaoblený horní konec, rovná základna
+      const pasmo = pw / n, sirka = Math.max(1, Math.min(24, pasmo > 6 ? pasmo - 2 : pasmo * 0.7));
+      hodnoty.forEach((v, i) => {
+        if (v == null || v <= 0) { sloupky.push(null); return; }
+        const x0 = X(i) - sirka / 2, y0 = Y(v), zakl = Y(os.lo), vyska = zakl - y0, r = Math.min(4, sirka / 2, vyska);
+        const p = el("path", { d: `M${x0},${zakl} V${y0 + r} a${r},${r} 0 0 1 ${r},${-r} h${sirka - 2 * r} a${r},${r} 0 0 1 ${r},${r} V${zakl} Z`, fill: "var(--series-1)" });
+        svg.append(p); sloupky.push(p);
+      });
+    } else {                                           // čára: 2 px, přerušená tam, kde chybí data
+      let d = "", pred = false;
+      hodnoty.forEach((v, i) => { if (v == null) { pred = false; return; } d += `${pred ? "L" : "M"}${X(i)},${Y(v)} `; pred = true; });
+      svg.append(el("path", { d, fill: "none", stroke: "var(--series-1)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      hodnoty.forEach((v, i) => {                      // osamělé body (okolní dny bez dat) by jinak zmizely
+        if (v != null && hodnoty[i - 1] == null && hodnoty[i + 1] == null)
+          svg.append(el("circle", { cx: X(i), cy: Y(v), r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2 }));
+      });
+      const posl = hodnoty.map((v) => v != null).lastIndexOf(true);   // koncová tečka s kroužkem v barvě povrchu
+      svg.append(el("circle", { cx: X(posl), cy: Y(hodnoty[posl]), r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2 }));
+    }
+
+    // hover vrstva: nitkový kříž se přichytí k nejbližšímu dni, plocha pro najetí je celá šířka grafu
+    const kriz = el("line", { y1: o.t, y2: o.t + ph, stroke: "var(--axis)", "stroke-width": 1, visibility: "hidden" });
+    const tecka = el("circle", { r: 4, fill: "var(--series-1)", stroke: "var(--surface-1)", "stroke-width": 2, visibility: "hidden" });
+    const lapac = el("rect", { x: o.l, y: o.t, width: pw, height: ph, fill: "transparent" });
+    svg.append(kriz, tecka, lapac);
+    plocha.append(svg);
+
+    let aktivni = -1;
+    function ukaz(i) {
+      if (aktivni >= 0 && sloupky[aktivni]) sloupky[aktivni].setAttribute("fill", "var(--series-1)");
+      aktivni = i; const v = hodnoty[i], x = X(i);
+      kriz.setAttribute("x1", x); kriz.setAttribute("x2", x); kriz.setAttribute("visibility", def.typ === "cara" ? "visible" : "hidden");
+      if (def.typ === "sloupce" && sloupky[i]) sloupky[i].setAttribute("fill", "var(--series-1-hover)");
+      if (def.typ === "cara" && v != null) { tecka.setAttribute("cx", x); tecka.setAttribute("cy", Y(v)); tecka.setAttribute("visibility", "visible"); }
+      else tecka.setAttribute("visibility", "hidden");
+      tip.replaceChildren();                           // jen textContent, nikdy innerHTML
+      const den = document.createElement("div"); den.className = "den"; den.textContent = dlouze(seznamDnu[i]);
+      const radek = document.createElement("div"); radek.className = "radek";
+      if (v == null) radek.textContent = "bez dat";
+      else {
+        const klic = document.createElement("span"); klic.className = "klic";
+        const hod = document.createElement("strong"); hod.textContent = def.fmt(v) + (def.jednotka ? " " + def.jednotka : "");
+        const jm = document.createElement("span"); jm.className = "jmeno"; jm.textContent = def.nazev;
+        radek.append(klic, hod, jm);
+      }
+      tip.append(den, radek); tip.hidden = false;
+      const rk = karta.getBoundingClientRect(), rs = svg.getBoundingClientRect();
+      const px = rs.left - rk.left + (x / W) * rs.width, sirkaTip = tip.offsetWidth;
+      const vpravo = px + 12 + sirkaTip <= rk.width - 4;          // tooltip vedle nitkového kříže, ne přes něj
+      tip.style.left = (vpravo ? px + 12 : Math.max(4, px - 12 - sirkaTip)) + "px";
+      tip.style.top = (rs.top - rk.top + 4) + "px";
+    }
+    function schovej() {
+      if (aktivni >= 0 && sloupky[aktivni]) sloupky[aktivni].setAttribute("fill", "var(--series-1)");
+      aktivni = -1; kriz.setAttribute("visibility", "hidden"); tecka.setAttribute("visibility", "hidden"); tip.hidden = true;
+    }
+    const indexZ = (ev) => { const r = svg.getBoundingClientRect(), x = ((ev.clientX - r.left) / r.width) * W;
+      return Math.max(0, Math.min(n - 1, Math.floor(((x - o.l) / pw) * n))); };
+    lapac.addEventListener("pointermove", (ev) => ukaz(indexZ(ev)));
+    lapac.addEventListener("pointerdown", (ev) => ukaz(indexZ(ev)));
+    lapac.addEventListener("pointerleave", schovej);
+    svg.addEventListener("focus", () => ukaz(aktivni >= 0 ? aktivni : Math.max(0, hodnoty.map((v) => v != null).lastIndexOf(true))));
+    svg.addEventListener("blur", schovej);
+    svg.addEventListener("keydown", (ev) => {
+      if (ev.key === "ArrowLeft") { ukaz(Math.max(0, aktivni - 1)); ev.preventDefault(); }
+      else if (ev.key === "ArrowRight") { ukaz(Math.min(n - 1, aktivni + 1)); ev.preventDefault(); }
+      else if (ev.key === "Escape") schovej();
+    });
+  }
+
+  function vykresliGrafy() {
+    const seznamDnu = dny(stav.rozsah), host = $("grafy");
+    if (!host.children.length) {
+      for (const def of GRAFY) {
+        const k = document.createElement("div"); k.className = "karta"; k.dataset.klic = def.klic;
+        k.innerHTML = '<h3></h3><div class="hodnota"></div><div class="pod"></div><div class="plocha"></div><div class="tip" hidden></div>';
+        k.querySelector("h3").textContent = def.nazev; host.append(k);
+      }
+    }
+    for (const def of GRAFY) {
+      const karta = host.querySelector(`[data-klic="${def.klic}"]`), hodnoty = hodnotyPro(def, seznamDnu);
+      const ma = hodnoty.filter((v) => v != null), hod = karta.querySelector(".hodnota"), pod = karta.querySelector(".pod");
+      hod.replaceChildren(); pod.textContent = "";
+      if (ma.length) {
+        const posl = hodnoty.map((v) => v != null).lastIndexOf(true);
+        hod.append(document.createTextNode(def.fmt(hodnoty[posl])));
+        if (def.jednotka) { const s = document.createElement("small"); s.textContent = def.jednotka; hod.append(s); }
+        const prumer = ma.reduce((a, b) => a + b, 0) / ma.length;
+        pod.textContent = `${posl === hodnoty.length - 1 ? "dnes" : "k " + kratce(seznamDnu[posl])} · průměr ${stav.rozsah} dní ${def.fmt(prumer)}${def.jednotka ? " " + def.jednotka : ""}`;
+      }
+      nakresli(karta, def, seznamDnu, hodnoty);
     }
   }
+
+  // ---------- tabulka (stejná data jako grafy; nikdo není odkázán jen na tooltip) ----------
+  function vykresliTabulku() {
+    const seznamDnu = dny(stav.rozsah).reverse(), tab = $("tab"); tab.replaceChildren();
+    const sloupce = GRAFY.map((g) => [g, hodnotyPro(g, seznamDnu)]);
+    const hr = tab.createTHead().insertRow();
+    for (const h of ["Den", ...GRAFY.map((g) => g.nazev)]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
+    const tb = tab.createTBody();
+    seznamDnu.forEach((den, i) => {
+      if (sloupce.every(([, h]) => h[i] == null)) return;
+      const tr = tb.insertRow(); tr.insertCell().textContent = dlouze(den);
+      for (const [g, h] of sloupce) tr.insertCell().textContent = h[i] == null ? "–" : g.fmt(h[i]) + (g.jednotka ? " " + g.jednotka : "");
+    });
+    if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
+  }
+
+  function vykresliVse() { $("garmin").hidden = false; vykresliGrafy(); vykresliTabulku(); }
 
   function vykresliOsu(data) {
     $("osa-sekce").hidden = false; $("osa").replaceChildren();
@@ -126,11 +344,31 @@
   }
 
   async function nacti() {
-    const od = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
-    const [osa, metriky] = await Promise.all([api("/timeline"), api("/metrics?from=" + od)]);
-    $("stav").textContent = ""; $("ovladani").hidden = false;
-    vykresliTabulku(metriky); vykresliOsu(osa);
+    $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
+    try {
+      const od = dny(365)[0];
+      const [osa, metriky] = await Promise.all([api("/timeline"), api("/metrics?from=" + od)]);
+      stav.metriky = metriky;
+      $("stav").textContent = ""; $("ovladani").hidden = false;
+      vykresliVse(); vykresliOsu(osa);
+    } finally { $("grafy").classList.remove("nacitam"); }
   }
+
+  // filtr období + přepínač graf/tabulka
+  document.querySelectorAll(".filtr [data-dny]").forEach((b) => b.addEventListener("click", () => {
+    stav.rozsah = +b.dataset.dny;
+    document.querySelectorAll(".filtr [data-dny]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    vykresliVse();
+  }));
+  $("prepni").addEventListener("click", () => {
+    stav.tabulka = !stav.tabulka;
+    $("prepni").setAttribute("aria-pressed", String(stav.tabulka));
+    $("prepni").textContent = stav.tabulka ? "Zobrazit grafy" : "Zobrazit tabulku";
+    $("grafy").hidden = stav.tabulka; $("tabulka").hidden = !stav.tabulka;
+    if (!stav.tabulka) vykresliGrafy();
+  });
+  let rafId = 0;
+  new ResizeObserver(() => { cancelAnimationFrame(rafId); rafId = requestAnimationFrame(() => { if (stav.metriky.length && !stav.tabulka) vykresliGrafy(); }); }).observe($("grafy"));
 
   function zprava(text, trida) { const e = $("sync-stav"); e.textContent = text; e.className = "msg " + (trida || ""); }
 
@@ -141,9 +379,8 @@
       if (r.errors.length) zprava(`Uloženo ${r.metrics_stored} hodnot, ale některá data se nepodařilo stáhnout: ${r.errors.join(" | ")}`, "err");
       else zprava(`Hotovo: uloženo ${r.metrics_stored} hodnot (${r.from} až ${r.to}).`, "ok");
       const NAZVY = { dailysummaries: "Denní souhrny", usersummary_daily: "Denní souhrny (po dnech)", sleep: "Spánek", hrv: "HRV" };
-      const detail = Object.entries(r.by_type || {}).map(([k, v]) => `${NAZVY[k] || k}: ${v.days_returned} dní, ${v.metrics_stored} hodnot` +
+      $("sync-detail").textContent = Object.entries(r.by_type || {}).map(([k, v]) => `${NAZVY[k] || k}: ${v.days_returned} dní, ${v.metrics_stored} hodnot` +
         (Object.keys(v.metrics).length ? ` (${Object.entries(v.metrics).map(([m, n]) => `${m} ${n}×`).join(", ")})` : "")).join("\n");
-      $("sync-detail").textContent = detail;
       await nacti();
     } catch (e) {
       if (e.status === 401) nutnePrihlaseni(e.message); else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");

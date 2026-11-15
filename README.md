@@ -5,7 +5,7 @@ lékařská vyšetření (např. kolonoskopii) a genetiku. **Jen pro jednoho už
 
 ## Stack
 
-Python 3.11+, FastAPI, SQLite (stdlib `sqlite3`), pytest. Frontend (HTMX + Plotly/ECharts) přijde v další etapě.
+Python 3.11+, FastAPI, SQLite (stdlib `sqlite3`), pytest. Frontend je jedna statická stránka (`app/static/index.html`) s vlastními SVG grafy bez externích knihoven: každá metrika má vlastní malý graf, najetí myší nebo šipky na klávesnici ukážou hodnotu dne, k dispozici je i tabulka.
 
 ## Rychlý start
 
