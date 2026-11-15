@@ -48,6 +48,7 @@
     </label>
   </div>
   <p class="msg" id="sync-stav" role="status"></p>
+  <pre class="msg" id="sync-detail" style="white-space:pre-wrap;font:.8rem/1.5 ui-monospace,monospace;margin:0 0 8px"></pre>
 
   <section id="garmin" hidden>
     <h2>Garmin: posledních 14 dní</h2>
@@ -139,6 +140,10 @@
       const r = await api("/garmin/sync?days=" + $("dny").value, { method: "POST" });
       if (r.errors.length) zprava(`Uloženo ${r.metrics_stored} hodnot, ale některá data se nepodařilo stáhnout: ${r.errors.join(" | ")}`, "err");
       else zprava(`Hotovo: uloženo ${r.metrics_stored} hodnot (${r.from} až ${r.to}).`, "ok");
+      const NAZVY = { dailysummaries: "Denní souhrny", sleep: "Spánek", hrv: "HRV" };
+      const detail = Object.entries(r.by_type || {}).map(([k, v]) => `${NAZVY[k] || k}: ${v.days_returned} dní, ${v.metrics_stored} hodnot` +
+        (Object.keys(v.metrics).length ? ` (${Object.entries(v.metrics).map(([m, n]) => `${m} ${n}×`).join(", ")})` : "")).join("\n");
+      $("sync-detail").textContent = detail;
       await nacti();
     } catch (e) {
       if (e.status === 401) nutnePrihlaseni(e.message); else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");

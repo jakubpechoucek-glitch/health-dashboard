@@ -157,10 +157,11 @@ def _save(db: sqlite3.Connection, summary_type: str, payload: Any, rows: list[tu
 
 
 def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -> dict:
-    stored, errors = 0, []
+    stored, errors, by_type = 0, [], {}
 
     def run(name: str, chunk_days: int, fetch, extract, normalize):
         nonlocal stored
+        info = by_type[name] = {"days_returned": 0, "metrics_stored": 0, "metrics": {}}
         for a, b in _chunks(start, end, chunk_days):
             try:
                 payload = fetch(a.isoformat(), b.isoformat())
@@ -168,6 +169,10 @@ def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -
                 rows = [r for it in items for r in normalize(it)]
                 _save(db, name, payload, rows)
                 stored += len(rows)
+                info["days_returned"] += len(items)
+                info["metrics_stored"] += len(rows)
+                for r in rows:  # kolik dní má která metrika (bez hodnot, jen počty)
+                    info["metrics"][r[1]] = info["metrics"].get(r[1], 0) + 1
             except (GarminError, httpx.HTTPError, ValueError) as e:
                 errors.append(f"{name} {a}..{b}: {e}")
                 break  # při chybě v tomto typu nemá smysl zkoušet další úseky
@@ -181,7 +186,8 @@ def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -
     run("hrv", 28,
         lambda a, b: client.get(f"/hrv-service/hrv/daily/{a}/{b}"),
         lambda p: p.get("hrvSummaries", []), normalize_hrv)
-    return {"from": start.isoformat(), "to": end.isoformat(), "metrics_stored": stored, "errors": errors}
+    return {"from": start.isoformat(), "to": end.isoformat(), "metrics_stored": stored,
+            "by_type": by_type, "errors": errors}
 
 
 def get_db(request: Request) -> sqlite3.Connection:

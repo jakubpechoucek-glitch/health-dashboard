@@ -103,6 +103,8 @@ def test_sync_requires_login(client):
 def test_sync_stores_metrics_and_uses_api_key_then_bearer(client, garmin_calls):
     r = client.post("/garmin/sync", params={"days": 3}).json()
     assert r["errors"] == [] and r["metrics_stored"] == 9  # denní 4 (kroky, klidový tep, stres, kcal) + spánek 3 + HRV 2
+    assert r["by_type"]["sleep"] == {"days_returned": 1, "metrics_stored": 3,
+        "metrics": {"sleep_seconds": 1, "sleep_deep_seconds": 1, "sleep_score": 1}}
     got = {m["metric"]: m["value"] for m in client.get("/metrics").json()}
     assert got["steps"] == 9000 and got["resting_hr"] == 52 and got["sleep_score"] == 81
     assert got["hrv_last_night_avg"] == 48 and got["sleep_deep_seconds"] == 5400
