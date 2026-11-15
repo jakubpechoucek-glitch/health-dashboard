@@ -151,6 +151,25 @@
   .v-zmena { color:var(--text); border-color:#fab219; }
   .uk-zona { color:var(--text-secondary); font-size:.8rem; margin-top:2px; }
   .uk-zona.mimo { color:var(--err); font-weight:600; }
+  .karta .odepnout { position:absolute; top:8px; right:8px; padding:2px 10px; border-radius:8px; font-size:.78rem; color:var(--text-secondary); }
+  .pocet { color:var(--text-secondary); font-weight:400; font-size:.9rem; }
+  #katalog-hledej { font:inherit; padding:8px 16px; border-radius:999px; border:1px solid var(--line); background:var(--tile); color:var(--text); min-width:220px; }
+  .kat-skupina { background:var(--surface-1); border:1px solid var(--line); border-radius:12px; margin-bottom:8px; }
+  .kat-skupina > summary { cursor:pointer; padding:10px 14px; font-weight:600; }
+  .kat-skupina .kat-pocet { color:var(--text-secondary); font-weight:400; margin-left:6px; }
+  .kat-radky { padding:0 14px 8px; display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:2px 18px; }
+  .kat-radek { display:flex; gap:8px; align-items:flex-start; padding:5px 0; font-size:.9rem; }
+  .kat-radek input { margin-top:3px; }
+  .kat-radek .meta { display:block; color:var(--text-secondary); font-size:.78rem; }
+  .kat-radek.hlavni { opacity:.7; }
+  #aktivity-tab td, #aktivity-tab th { padding:7px 10px; }
+  #aktivity-tab th:nth-child(2), #aktivity-tab th:nth-child(3) { text-align:left; }
+  #aktivity-tab tr.rozbal { cursor:pointer; }
+  #aktivity-tab tr.rozbal:hover td { background:color-mix(in srgb, var(--series-1) 6%, transparent); }
+  #aktivity-tab td.detail { text-align:left; white-space:normal; background:color-mix(in srgb, var(--series-1) 5%, transparent); }
+  .akt-detail { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:2px 20px; font-size:.84rem; }
+  .akt-detail div { display:flex; justify-content:space-between; gap:10px; border-bottom:1px dotted var(--line); padding:2px 0; }
+  .akt-detail span:first-child { color:var(--text-secondary); }
   .legenda { color:var(--text-secondary); font-size:.85rem; margin:0 0 10px; }
   .osa-radek { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
   .osa-radek .poznamka { display:block; color:var(--text-secondary); font-size:.88rem; margin-top:2px; white-space:pre-wrap; }
@@ -224,6 +243,28 @@
     <p class="legenda" id="legenda" hidden>▲ na ose = vyšetření, rozbor nebo jiná událost (najetím se zobrazí název)</p>
     <div class="grafy" id="grafy"></div>
     <div class="tablewrap" id="tabulka" hidden><table id="tab"></table></div>
+
+    <section id="pripnute-sekce" hidden>
+      <h2>Vybrané metriky</h2>
+      <div class="grafy" id="pripnute"></div>
+    </section>
+
+    <section id="aktivity-sekce" hidden>
+      <h2>Aktivity</h2>
+      <p class="msg" id="aktivity-souhrn"></p>
+      <div class="tablewrap" id="aktivity-wrap"><table id="aktivity-tab"></table></div>
+      <div class="bar"><button type="button" id="aktivity-vic" hidden>Zobrazit další</button></div>
+    </section>
+
+    <section id="katalog-sekce" hidden>
+      <h2>Všechny metriky z Garminu <span class="pocet" id="katalog-pocet"></span></h2>
+      <p class="msg">Zaškrtnutím metriku připneš jako graf nahoru do „Vybraných metrik“. Výběr se pamatuje na všech zařízeních.</p>
+      <div class="bar">
+        <input type="search" id="katalog-hledej" placeholder="Hledat metriku…" aria-label="Hledat metriku" autocomplete="off">
+        <button type="button" id="katalog-rozbalit">Rozbalit skupiny</button>
+      </div>
+      <div id="katalog"></div>
+    </section>
   </section>
 
   </div>
@@ -358,7 +399,65 @@
   const osaX = (den) => (stav.rozsah > 300 ? new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { month: "numeric", year: "numeric" }) : kratce(den));
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
-  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set(), osoby: [], osoba: 1 };
+
+  // ---------- všechny metriky z Garminu: názvy, skupiny, převody jednotek ----------
+  const NAZVY = {
+    steps: ["Pohyb", "Kroky"], resting_hr: ["Srdce", "Klidový tep", "tep/min"], min_hr: ["Srdce", "Minimální tep", "tep/min"], max_hr: ["Srdce", "Maximální tep", "tep/min"],
+    avg_stress: ["Stres", "Průměrný stres"], body_battery_max: ["Body Battery", "Body Battery, maximum"], body_battery_min: ["Body Battery", "Body Battery, minimum"],
+    active_kcal: ["Kalorie", "Aktivní kalorie", "kcal"], total_kcal: ["Kalorie", "Kalorie celkem", "kcal"], respiration_avg: ["Dech a SpO2", "Dechová frekvence", "dechů/min"],
+    spo2_avg: ["Dech a SpO2", "SpO2, průměr", "%"], intensity_moderate: ["Intenzita", "Střední intenzita", "min"], intensity_vigorous: ["Intenzita", "Vysoká intenzita", "min"],
+    sleep_seconds: ["Spánek", "Doba spánku"], sleep_deep_seconds: ["Spánek", "Hluboký spánek"], sleep_light_seconds: ["Spánek", "Lehký spánek"], sleep_rem_seconds: ["Spánek", "REM spánek"],
+    sleep_awake_seconds: ["Spánek", "Bdělost ve spánku"], sleep_score: ["Spánek", "Skóre spánku"], sleep_avg_hr: ["Spánek", "Tep ve spánku", "tep/min"],
+    hrv_last_night_avg: ["HRV", "HRV minulé noci", "ms"], hrv_weekly_avg: ["HRV", "HRV, týdenní průměr", "ms"],
+    "activity.count": ["Aktivity", "Počet aktivit"], "activity.duration_s": ["Aktivity", "Doba aktivit"], "activity.distance_m": ["Aktivity", "Vzdálenost aktivit"],
+    "activity.calories": ["Aktivity", "Kalorie z aktivit", "kcal"], "activity.vo2max": ["Aktivity", "VO2max", "ml/kg/min"], "activity.aerobic_te_max": ["Aktivity", "Aerobní tréninkový efekt (maximum dne)"],
+    "body.weight_kg": ["Váha a složení těla", "Hmotnost", "kg"], "body.bmi": ["Váha a složení těla", "BMI"], "body.fat_pct": ["Váha a složení těla", "Tělesný tuk", "%"],
+    "body.water_pct": ["Váha a složení těla", "Voda v těle", "%"], "body.bone_mass_kg": ["Váha a složení těla", "Kostní hmota", "kg"], "body.muscle_mass_kg": ["Váha a složení těla", "Svalová hmota", "kg"],
+    "body.visceral_fat": ["Váha a složení těla", "Viscerální tuk"], "body.metabolic_age": ["Váha a složení těla", "Metabolický věk", "let"], "body.physique_rating": ["Váha a složení těla", "Hodnocení postavy"],
+    "fitness.age": ["Kondice", "Fitness věk", "let"], "fitness.chronological_age": ["Kondice", "Skutečný věk", "let"], "fitness.achievable_age": ["Kondice", "Dosažitelný fitness věk", "let"],
+  };
+  const SEG = {
+    movement: "pohyb", steps: "kroky", pushes: "tlačení vozíku", floorsAscended: "patra nahoru", floorsDescended: "patra dolů", goal: "cíl", value: "hodnota", distanceInMeters: "vzdálenost",
+    calories: "kalorie", burnedResting: "klidový výdej", burnedActive: "aktivní výdej", burnedTotal: "výdej celkem", consumedGoal: "cíl příjmu", consumedValue: "příjem", consumedRemaining: "zbývá z příjmu",
+    heartRate: "tep", minValue: "minimum", maxValue: "maximum", restingValue: "klidový", alertCount: "počet upozornění", intensityMinutes: "intenzivní minuty", moderate: "střední", vigorous: "vysoká",
+    stress: "stres", avgLevel: "průměr", maxLevel: "maximum", restProportion: "podíl klidu", activityProportion: "podíl aktivity", uncategorizedProportion: "podíl nezařazeno",
+    lowStressProportion: "podíl nízkého stresu", mediumStressProportion: "podíl středního stresu", highStressProportion: "podíl vysokého stresu", totalDurationInMillis: "celková doba",
+    restDurationInMillis: "doba klidu", activityDurationInMillis: "doba aktivity", uncategorizedDurationInMillis: "doba nezařazeno", lowStressDurationInMillis: "doba nízkého stresu",
+    mediumStressDurationInMillis: "doba středního stresu", highStressDurationInMillis: "doba vysokého stresu", bodyBattery: "Body Battery", chargedValue: "nabito", drainedValue: "vybito",
+    latestValue: "poslední hodnota", endOfDayValue: "na konci dne", hydration: "hydratace", goalInMl: "cíl", goalInFractionalMl: "cíl", valueInMl: "vypito", sweatLossInMl: "ztráta potem",
+    respiration: "dech", avgValue: "průměr", pulseOx: "SpO2", wellnessChronology: "záznam dne", jetLag: "jet lag",
+    napTimeSeconds: "šlofíky", unmeasurableSleepSeconds: "neměřitelný spánek", averageSpO2Value: "SpO2 průměr", lowestSpO2Value: "SpO2 minimum", highestSpO2Value: "SpO2 maximum",
+    numberOfEventsBelowThreshold: "poklesy SpO2 pod práh", averageSpO2HRSleep: "tep při měření SpO2", spo2Threshold: "práh SpO2", averageRespirationValue: "dech průměr",
+    lowestRespirationValue: "dech minimum", highestRespirationValue: "dech maximum", awakeCount: "počet probuzení", avgSleepStress: "stres ve spánku", sleepScores: "skóre spánku",
+    overall: "celkové", totalDuration: "délka", remPercentage: "REM", restlessness: "neklid", lightPercentage: "lehký spánek", deepPercentage: "hluboký spánek", sleepNeed: "potřeba spánku",
+    nextSleepNeed: "potřeba spánku další noci", baseline: "základ", actual: "skutečnost", recommendedBedtimeStartMins: "doporučené uložení od (min od půlnoci)",
+    recommendedBedtimeEndMins: "doporučené uložení do (min od půlnoci)", sleepAlignment: "sladění spánku", sleepNeedBaselineMins: "základní potřeba (min)",
+    optimalSleepWindowStartMins: "optimální okno od (min)", optimalSleepWindowEndMins: "optimální okno do (min)", weeklyAvg: "týdenní průměr", lastNightAvg: "minulá noc, průměr",
+    lastNight5MinHigh: "minulá noc, 5min maximum", lowUpper: "horní mez nízkého pásma", balancedLow: "vyvážené od", balancedUpper: "vyvážené do", markerValue: "značka",
+    qualifierKey: "kvalita", optimalStart: "optimum od", optimalEnd: "optimum do",
+  };
+  const SKUP_DENNI = { movement: "Pohyb", heartRate: "Srdce", stress: "Stres", bodyBattery: "Body Battery", hydration: "Hydratace", calories: "Kalorie", intensityMinutes: "Intenzita", respiration: "Dech a SpO2", pulseOx: "Dech a SpO2" };
+  const PORADI_SKUPIN = ["Pohyb", "Srdce", "Stres", "Body Battery", "Spánek", "HRV", "Dech a SpO2", "Kalorie", "Intenzita", "Hydratace", "Aktivity", "Váha a složení těla", "Kondice", "Denní souhrn: ostatní", "Ostatní"];
+  const slova = (k) => k.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/_/g, " ").toLowerCase();
+  const prvniVelke = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const skupinaMetriky = (klic) => { const [ns, d] = klic.split("."); return NAZVY[klic] ? NAZVY[klic][0] : ns === "daily" ? (SKUP_DENNI[d] || "Denní souhrn: ostatní") : ns === "sleep" ? "Spánek" : ns === "hrv" ? "HRV" : ns === "activity" ? "Aktivity" : ns === "body" ? "Váha a složení těla" : ns === "fitness" ? "Kondice" : "Ostatní"; };
+  const nazevMetriky = (klic) => NAZVY[klic] ? NAZVY[klic][1] : prvniVelke(klic.split(".").slice(1).map((s) => SEG[s] || slova(s)).filter((x, i, a) => a.indexOf(x) === i).join(" – "));
+
+  // Z katalogu (jednotka, rozsah hodnot) a názvu udělá definici grafu: převod jednotek, formát, sloupce nebo čára.
+  function defMetriky(klic) {
+    const k = stav.katalog.find((x) => x.metric === klic) || { unit: "", min: 0, max: 0 }, mx = Math.max(Math.abs(k.max ?? 0), Math.abs(k.min ?? 0)), u = k.unit || "";
+    let jednotka = (NAZVY[klic] && NAZVY[klic][2]) || "", prevod = null;
+    const cas = (deli, mala) => { if (mx / deli >= 1) { prevod = (v) => v / deli; jednotka = "h"; } else if (mx / (deli / 60) >= 2) { prevod = (v) => v / (deli / 60); jednotka = "min"; } else { jednotka = mala; } };
+    if (u === "s") cas(3600, "s"); else if (u === "ms") cas(3.6e6, "ms");
+    else if (u === "ratio") { prevod = (v) => v * 100; jednotka = "%"; }
+    else if (u === "m") { if (mx >= 1000) { prevod = (v) => v / 1000; jednotka = "km"; } else jednotka = "m"; }
+    else if (!jednotka) jednotka = { bpm: "tep/min", years: "let", count: "", score: "" }[u] ?? u;
+    const sloupce = ["count", "s", "ms", "m", "ml", "kcal", "min"].includes(u) || /steps|floors|calories|intensity|count/i.test(klic);
+    const fmt = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : Math.abs(v) >= 100 ? 1 : 2 });
+    return { klic, nazev: nazevMetriky(klic), typ: sloupce ? "sloupce" : "cara", prevod, fmt, jednotka };
+  }
+
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set(), osoby: [], osoba: 1, katalog: [], pripnute: [], aktivity: [], aktivityPocet: 30, katalogOtevreny: false };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -498,20 +597,31 @@
   }
 
   function vykresliGrafy() {
+    kresliSkupinu($("grafy"), GRAFY, false);
+    const sekce = $("pripnute-sekce"), defs = stav.pripnute.filter((k) => !GRAFY.some((g) => g.klic === k) && stav.katalog.some((x) => x.metric === k)).map(defMetriky);
+    sekce.hidden = !defs.length;
+    kresliSkupinu($("pripnute"), defs, true);
+  }
+
+  function kresliSkupinu(host, defs, odepnout) {
     // dlouhá období se kreslí po skupinách dnů (průměr), aby graf nebyl nečitelný; hlavička vždy ukazuje skutečné denní hodnoty
-    const vse = dny(stav.rozsah), host = $("grafy"), bin = Math.max(1, Math.ceil(vse.length / 150));
+    const vse = dny(stav.rozsah), bin = Math.max(1, Math.ceil(vse.length / 150));
     const skupiny = []; for (let i = 0; i < vse.length; i += bin) skupiny.push(vse.slice(i, i + bin));
     const seznamDnu = skupiny.map((g) => g[0]);
     const skupinaDne = new Map(); skupiny.forEach((g, j) => g.forEach((d) => skupinaDne.set(d, j)));
-    if (!host.children.length) {
-      for (const def of GRAFY) {
+    const klice = defs.map((d) => d.klic).join("|");
+    if (host.dataset.klice !== klice) {                                              // sada karet se změnila: postavit znovu
+      host.replaceChildren(); host.dataset.klice = klice;
+      for (const def of defs) {
         const k = document.createElement("div"); k.className = "karta"; k.dataset.klic = def.klic;
         k.innerHTML = '<h3></h3><div class="hodnota"></div><div class="pod"></div><div class="plocha"></div><div class="tip" hidden></div>';
-        k.querySelector("h3").textContent = def.nazev; host.append(k);
+        k.querySelector("h3").textContent = def.nazev;
+        if (odepnout) { const b = document.createElement("button"); b.type = "button"; b.className = "odepnout"; b.textContent = "Odepnout"; b.setAttribute("aria-label", `Odepnout metriku ${def.nazev}`); b.addEventListener("click", () => pripnout(def.klic, false)); k.append(b); }
+        host.append(k);
       }
     }
-    for (const def of GRAFY) {
-      const karta = host.querySelector(`[data-klic="${def.klic}"]`), denni = hodnotyPro(def, vse);
+    for (const def of defs) {
+      const karta = host.querySelector(`[data-klic="${CSS.escape(def.klic)}"]`), denni = hodnotyPro(def, vse);
       const hodnoty = bin === 1 ? denni : skupiny.map((g, j) => { const v = denni.slice(j * bin, j * bin + g.length).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; });
       const ma = denni.filter((v) => v != null), hod = karta.querySelector(".hodnota"), pod = karta.querySelector(".pod");
       hod.replaceChildren(); pod.textContent = "";
@@ -541,7 +651,7 @@
     if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
   }
 
-  function vykresliVse() { if (!jeVlastnik()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); }
+  function vykresliVse() { if (!jeVlastnik()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); vykresliKatalog(); vykresliAktivity(); }
 
   const DRUHY = { exam: "Vyšetření", genetics: "Genetika", medication: "Léky", other: "Jiné" };
   function vykresliOsu(data) {
@@ -1027,9 +1137,98 @@
 
   const nactiMetriky = () => {                      // jen metriky, které se kreslí, a jen za zvolené období
     const q = new URLSearchParams({ from: dny(stav.rozsah)[0] });
-    for (const g of GRAFY) q.append("metric", g.klic);
+    for (const klic of new Set([...GRAFY.map((g) => g.klic), ...stav.pripnute])) q.append("metric", klic);
     return api("/metrics?" + q);
   };
+
+  // ---------- katalog všech metrik a připínání grafů ----------
+  async function pripnout(klic, zapnout) {
+    const stare = [...stav.pripnute];
+    stav.pripnute = zapnout ? [...new Set([...stav.pripnute, klic])] : stav.pripnute.filter((k) => k !== klic);
+    try {
+      await api("/prefs/pripnute", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: stav.pripnute }) });
+      stav.metriky = await nactiMetriky(); vykresliVse();
+    } catch (e) { stav.pripnute = stare; vykresliVse(); $("sync-stav").textContent = "Výběr metrik se nepodařilo uložit: " + e.message; $("sync-stav").className = "msg err"; }
+  }
+  function vykresliKatalog() {
+    const sekce = $("katalog-sekce"); sekce.hidden = !stav.katalog.length; if (!stav.katalog.length) return;
+    const hled = $("katalog-hledej").value.trim().toLowerCase(), host = $("katalog"), skupiny = new Map(); host.replaceChildren();
+    $("katalog-pocet").textContent = `(${stav.katalog.length})`;
+    for (const m of stav.katalog) {
+      const nazev = nazevMetriky(m.metric); if (hled && !(nazev.toLowerCase().includes(hled) || m.metric.toLowerCase().includes(hled))) continue;
+      const g = skupinaMetriky(m.metric); (skupiny.get(g) || skupiny.set(g, []).get(g)).push([m, nazev]);
+    }
+    const poradi = [...PORADI_SKUPIN.filter((g) => skupiny.has(g)), ...[...skupiny.keys()].filter((g) => !PORADI_SKUPIN.includes(g))];
+    for (const g of poradi) {
+      const det = document.createElement("details"); det.className = "kat-skupina"; det.open = !!hled || stav.katalogOtevreny; det.dataset.skupina = g;
+      const sum = document.createElement("summary"); sum.textContent = g; const pc = document.createElement("span"); pc.className = "kat-pocet"; pc.textContent = `(${skupiny.get(g).length})`; sum.append(pc); det.append(sum);
+      const radky = document.createElement("div"); radky.className = "kat-radky";
+      for (const [m, nazev] of skupiny.get(g).sort((a, b) => a[1].localeCompare(b[1], "cs"))) {
+        const hlavni = GRAFY.some((x) => x.klic === m.metric), def = defMetriky(m.metric);
+        const lab = document.createElement("label"); lab.className = "kat-radek" + (hlavni ? " hlavni" : "");
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = hlavni || stav.pripnute.includes(m.metric); cb.disabled = hlavni; cb.dataset.metrika = m.metric;
+        cb.addEventListener("change", () => pripnout(m.metric, cb.checked));
+        const t = document.createElement("span"); t.textContent = nazev + (def.jednotka ? ` (${def.jednotka})` : "");
+        const meta = document.createElement("span"); meta.className = "meta";
+        const posl = m.last == null ? "" : ` · naposledy ${def.fmt(def.prevod ? def.prevod(m.last) : m.last)}${def.jednotka ? " " + def.jednotka : ""}`;
+        meta.textContent = (hlavni ? "už v hlavních grafech · " : "") + `${m.days} dní, ${dlouzeDatum(m.first_day)} – ${dlouzeDatum(m.last_day)}${posl}`;
+        t.append(meta); lab.append(cb, t); radky.append(lab);
+      }
+      det.append(radky); host.append(det);
+    }
+    if (!poradi.length) { const p = document.createElement("p"); p.className = "msg"; p.textContent = "Žádná metrika neodpovídá hledání."; host.append(p); }
+  }
+  $("katalog-hledej").addEventListener("input", vykresliKatalog);
+  $("katalog-rozbalit").addEventListener("click", () => {
+    stav.katalogOtevreny = !stav.katalogOtevreny; $("katalog-rozbalit").textContent = stav.katalogOtevreny ? "Sbalit skupiny" : "Rozbalit skupiny"; vykresliKatalog();
+  });
+
+  // ---------- aktivity z hodinek ----------
+  const TYPY = { running: "Běh", treadmill_running: "Běh na pásu", trail_running: "Trailový běh", cycling: "Cyklistika", indoor_cycling: "Kolo na trenažéru", road_biking: "Silniční kolo", mountain_biking: "Horské kolo",
+    walking: "Chůze", hiking: "Turistika", swimming: "Plavání", lap_swimming: "Plavání v bazénu", open_water_swimming: "Plavání ve volné vodě", strength_training: "Posilování", indoor_cardio: "Kardio",
+    yoga: "Jóga", pilates: "Pilates", elliptical: "Eliptický trenažér", stair_climbing: "Chůze do schodů", rowing: "Veslování", indoor_rowing: "Veslování na trenažéru", hiit: "HIIT", other: "Jiná aktivita",
+    resort_skiing_snowboarding: "Lyžování", cross_country_skiing: "Běžky", tennis: "Tenis", golf: "Golf", multi_sport: "Multisport" };
+  const typAktivity = (k) => TYPY[k] || prvniVelke(slova(k || "jiná"));
+  const hmmss = (s) => { if (s == null) return "–"; const m = Math.round(s / 60), h = Math.floor(m / 60); return h ? `${h}:${String(m % 60).padStart(2, "0")} h` : `${m} min`; };
+  const AKT_NAZVY = { distance: "Vzdálenost (m)", duration: "Doba (s)", elapsedDuration: "Celková doba (s)", movingDuration: "Doba pohybu (s)", elevationGain: "Nastoupáno (m)", elevationLoss: "Naklesáno (m)",
+    averageSpeed: "Průměrná rychlost (m/s)", maxSpeed: "Maximální rychlost (m/s)", calories: "Kalorie", bmrCalories: "Klidové kalorie", averageHR: "Průměrný tep", maxHR: "Maximální tep",
+    averageRunningCadenceInStepsPerMinute: "Průměrná kadence (kroků/min)", maxRunningCadenceInStepsPerMinute: "Maximální kadence", steps: "Kroky", avgPower: "Průměrný výkon (W)", maxPower: "Maximální výkon (W)",
+    normPower: "Normalizovaný výkon (W)", aerobicTrainingEffect: "Aerobní tréninkový efekt", anaerobicTrainingEffect: "Anaerobní tréninkový efekt", vO2MaxValue: "VO2max", trainingStressScore: "Training Stress Score",
+    avgStrideLength: "Průměrná délka kroku", avgVerticalOscillation: "Vertikální oscilace", avgGroundContactTime: "Doba kontaktu se zemí (ms)", minTemperature: "Minimální teplota", maxTemperature: "Maximální teplota",
+    minElevation: "Minimální výška (m)", maxElevation: "Maximální výška (m)", avgElevation: "Průměrná výška (m)", activityName: "Název", startTimeLocal: "Začátek (místní čas)", "activityType.typeKey": "Typ" };
+  function plocha(o, pre = "", out = {}) { for (const [k, v] of Object.entries(o)) { if (v == null || typeof v === "boolean") continue; if (typeof v === "object" && !Array.isArray(v)) plocha(v, pre + k + ".", out); else if (!Array.isArray(v)) out[pre + k] = v; } return out; }
+
+  async function nactiAktivity() { stav.aktivity = await api(`/garmin/activities?from=${dny(stav.rozsah)[0]}&limit=500`); }
+  function vykresliAktivity() {
+    const sekce = $("aktivity-sekce"), data = stav.aktivity; sekce.hidden = !jeVlastnik() || !data.length;
+    if (sekce.hidden) return;
+    const celkem = data.reduce((a, x) => ({ dur: a.dur + (x.duration_s || 0), dist: a.dist + (x.distance_m || 0), kcal: a.kcal + (x.calories || 0) }), { dur: 0, dist: 0, kcal: 0 });
+    $("aktivity-souhrn").textContent = `Za zvolené období ${data.length} aktivit · celkem ${hmmss(celkem.dur)} · ${cislo(celkem.dist / 1000, 1)} km · ${cislo(celkem.kcal)} kcal. Klepnutím na řádek uvidíš všechna pole od Garminu.`;
+    const tab = $("aktivity-tab"); tab.replaceChildren();
+    const hr = tab.createTHead().insertRow(); for (const h of ["Datum", "Typ", "Název", "Doba", "Vzdálenost", "Tep Ø / max", "Kalorie", "Nastoupáno"]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
+    const tb = tab.createTBody();
+    for (const a of data.slice(0, stav.aktivityPocet)) {
+      const tr = tb.insertRow(); tr.className = "rozbal"; tr.tabIndex = 0; tr.setAttribute("aria-expanded", "false");
+      const bunky = [dlouze(a.day), typAktivity(a.type_key), a.name || "–", hmmss(a.duration_s), a.distance_m ? cislo(a.distance_m / 1000, 2) + " km" : "–",
+        a.avg_hr ? `${Math.round(a.avg_hr)} / ${a.max_hr ? Math.round(a.max_hr) : "–"}` : "–", a.calories ? cislo(a.calories) : "–", a.elevation_gain ? Math.round(a.elevation_gain) + " m" : "–"];
+      bunky.forEach((t, i) => { const td = tr.insertCell(); td.textContent = t; if (i === 1 || i === 2) td.style.textAlign = "left"; });
+      const otevri = async () => {
+        const dalsi = tr.nextElementSibling;
+        if (dalsi && dalsi.classList.contains("detail-radek")) { dalsi.remove(); tr.setAttribute("aria-expanded", "false"); return; }
+        const dr = document.createElement("tr"); dr.className = "detail-radek"; const td = dr.insertCell(); td.colSpan = 8; td.className = "detail"; td.textContent = "Načítám…"; tr.after(dr); tr.setAttribute("aria-expanded", "true");
+        try {
+          const d = await api("/garmin/activities/" + a.activity_id), pl = plocha(d.raw), box = document.createElement("div"); box.className = "akt-detail";
+          for (const k of Object.keys(pl).sort()) { const r = document.createElement("div"), n = document.createElement("span"), v = document.createElement("span");
+            n.textContent = AKT_NAZVY[k] || prvniVelke(slova(k.replace(/\./g, " "))); v.textContent = typeof pl[k] === "number" ? cislo(pl[k], Number.isInteger(pl[k]) ? 0 : 2) : String(pl[k]); r.append(n, v); box.append(r); }
+          td.replaceChildren(box);
+        } catch (e) { td.textContent = "Podrobnosti se nepodařilo načíst: " + e.message; }
+      };
+      tr.addEventListener("click", otevri); tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); otevri(); } });
+    }
+    $("aktivity-vic").hidden = data.length <= stav.aktivityPocet;
+  }
+  $("aktivity-vic").addEventListener("click", () => { stav.aktivityPocet += 30; vykresliAktivity(); });
+
   // ---------- úložiště: důkaz, že data zůstávají, a záloha ----------
   function vykresliStav(st) {
     $("uloziste").hidden = false;
@@ -1080,6 +1279,11 @@
     try {
       if (!stav.osoby.length) await nactiOsoby();
       const q = "?person_id=" + stav.osoba;
+      if (jeVlastnik()) {                                              // katalog metrik, připnuté metriky a aktivity patří k Garminu, tedy k vlastníkovi
+        const [katalog, prefs] = await Promise.all([api("/metrics/catalog").catch(() => []), api("/prefs").catch(() => ({}))]);
+        stav.katalog = katalog; stav.pripnute = Array.isArray(prefs.pripnute) ? prefs.pripnute : [];
+        await nactiAktivity().catch(() => { stav.aktivity = []; });
+      }
       const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), jeVlastnik() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
       stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
@@ -1149,7 +1353,7 @@
     stav.rozsah = +b.dataset.dny;
     document.querySelectorAll(".filtr [data-dny]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     $("grafy").classList.add("nacitam");
-    nactiMetriky().then((m) => { stav.metriky = m; vykresliVse(); })
+    Promise.all([nactiMetriky(), nactiAktivity().catch(() => { stav.aktivity = []; })]).then(([m]) => { stav.metriky = m; vykresliVse(); })
       .catch((e) => { if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); } else $("stav").textContent = e.message; })
       .finally(() => $("grafy").classList.remove("nacitam"));
   }));

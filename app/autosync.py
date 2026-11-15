@@ -21,6 +21,7 @@ log = logging.getLogger("uvicorn.error")
 INITIAL_DELAY = 90          # po startu chvíli počkat, ať se služba usadí
 CHECK_EVERY = 600           # jak často se kontroluje, jestli je synchronizace na řadě
 RETRY_AFTER = timedelta(minutes=30)
+SOURCES_FLAG = "sync_sources_v2"   # značka, že se po přidání aktivit, váhy a kondice už proběhl první běh
 
 
 def is_due(last_ok: datetime | None, last_try: datetime | None, now: datetime, interval_hours: float) -> bool:
@@ -35,15 +36,26 @@ def maybe_run(db, settings: Settings, now: datetime | None = None,
     if settings.auto_sync_hours <= 0 or not settings.garmin_api_key:
         return None
     now = now or datetime.now(timezone.utc)
-    if not is_due(last_run_time(db, ok_only=True), last_run_time(db, source="auto"), now, settings.auto_sync_hours):
+    last_ok, last_try = last_run_time(db, ok_only=True), last_run_time(db, source="auto")
+    novy_zdroj = db.execute("SELECT 1 FROM meta WHERE key = ?", (SOURCES_FLAG,)).fetchone() is None
+    # po aktualizaci o nové zdroje dat (aktivity, váha…) proběhne první běh hned, ne až za interval; při chybě se opakuje po 30 minutách
+    if novy_zdroj:
+        last_fail = last_run_time(db, source="auto", failed_only=True)
+        if last_fail is not None and now - last_fail < RETRY_AFTER:
+            return None
+    elif not is_due(last_ok, last_try, now, settings.auto_sync_hours):
         return None
     end = date.today()
     try:
         with http_factory() as http:
-            return run_sync(db, GarminClient(http, settings.garmin_api_key),
-                            end - timedelta(days=settings.auto_sync_days), end, "auto")    # o den víc: pásmo časových zón
+            result = run_sync(db, GarminClient(http, settings.garmin_api_key),
+                              end - timedelta(days=settings.auto_sync_days), end, "auto")    # o den víc: pásmo časových zón
     except SyncBusy:
         return None
+    if novy_zdroj and not result["errors"]:
+        db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (SOURCES_FLAG, now.isoformat(timespec="seconds")))
+        db.commit()
+    return result
 
 
 def _job(settings: Settings) -> dict | None:

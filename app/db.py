@@ -19,6 +19,31 @@ CREATE TABLE IF NOT EXISTS metric_daily (
     PRIMARY KEY (source, metric, day)
 );
 
+-- Aktivity z hodinek (běh, jízda na kole, posilování…); raw = všechna pole aktivity bez GPS polohy
+CREATE TABLE IF NOT EXISTS activity (
+    activity_id INTEGER PRIMARY KEY,
+    day TEXT NOT NULL,
+    start_local TEXT NOT NULL,
+    type_key TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    duration_s REAL, distance_m REAL, calories REAL, avg_hr REAL, max_hr REAL, elevation_gain REAL, avg_speed REAL,
+    steps INTEGER, aerobic_te REAL, anaerobic_te REAL, vo2max REAL,
+    raw TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS ix_activity_day ON activity (day);
+
+-- Drobná nastavení uživatelského rozhraní (např. připnuté metriky), sdílená mezi zařízeními
+CREATE TABLE IF NOT EXISTS ui_pref (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Technické značky (např. že se surová data Garminu už jednou přepočítala)
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Historie synchronizací Garminu (automatických i ručních)
 CREATE TABLE IF NOT EXISTS sync_run (
     id INTEGER PRIMARY KEY,

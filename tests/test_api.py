@@ -121,7 +121,7 @@ def test_sync_stores_metrics_and_uses_api_key_then_bearer(client, garmin_calls):
     assert all(c[2] == "Bearer tok1" for c in garmin_calls[1:])
     assert sum(1 for c in garmin_calls if c[1].endswith("/token")) == 1
     raw = app.state.db.execute("SELECT COUNT(*) FROM garmin_raw").fetchone()[0]
-    assert raw == 3
+    assert raw == 6                                                                  # 3 zdroje + aktivity, váha, fitness
 
 
 def test_sync_is_idempotent(client, garmin_calls):
@@ -136,7 +136,7 @@ def test_sync_reports_errors_without_leaking_key(client):
         transport=httpx.MockTransport(make_garmin([], token_status=403)))
     r = client.post("/garmin/sync").json()
     app.dependency_overrides.pop(garmin.get_http, None)
-    assert r["metrics_stored"] == 0 and len(r["errors"]) == 3
+    assert r["metrics_stored"] == 0 and len(r["errors"]) == 4
     assert "test-klic" not in str(r) and "HTTP 403" in r["errors"][0]
 
 
@@ -621,3 +621,199 @@ def test_scheduler_exits_quietly_when_disabled():
     import asyncio
     asyncio.run(autosync.scheduler(Settings(auto_sync_hours=0)))
     asyncio.run(autosync.scheduler(Settings(auto_sync_hours=6, garmin_api_key="")))
+
+
+# ---------- všechny metriky z Garminu: plošné rozbalení, aktivity, váha, fitness věk (data VYMYŠLENÁ, tvar podle specifikace) ----------
+
+DAILY_FULL = {"data": [{
+    "calendarDate": "2026-11-14", "uuid": "abc", "userProfilePk": 123, "includesWellnessData": True,
+    "wellnessChronology": {"totalDurationInMillis": 86400000, "startTimestampGmt": "2026-11-13T23:00:00.0"},
+    "movement": {"steps": {"goal": 10000, "value": 9000, "distanceInMeters": 6500.5},
+                 "floorsAscended": {"goal": 10, "value": 12, "distanceInMeters": 36.0}},
+    "heartRate": {"restingValue": 52, "minValue": 45, "maxValue": 160, "alertCount": 0},
+    "stress": {"avgLevel": 25, "qualifier": "BALANCED", "lowStressProportion": 0.4, "totalDurationInMillis": 50000000},
+    "bodyBattery": {"maxValue": 90, "chargedValue": 55, "drainedValue": 60, "featureVersion": "3.0",
+                    "dynamicFeedbackEvent": {"eventTimestampGmt": "2026-11-14T05:00:00.0", "bodyBatteryLevel": "HIGH"}},
+    "hydration": {"goalInMl": 2500, "valueInMl": 1800},
+}]}
+SLEEP_FULL = [{
+    "calendarDate": "2026-11-14", "sleepTimeSeconds": 27000, "deepSleepSeconds": 5400, "averageSpO2Value": 95.5,
+    "lowestRespirationValue": 12.0, "awakeCount": 2, "avgSleepStress": 18.2, "sleepWindowConfirmed": True,
+    "sleepScores": {"overall": {"value": 81, "qualifierKey": "GOOD"}, "totalDuration": {"value": 90, "qualifierKey": "EXCELLENT", "optimalStart": 7.0}},
+    "sleepNeed": {"baseline": 480, "actual": 470, "displayedForTheDay": True, "recommendedBedtimeStartMins": 1320},
+    "dailyNapDTOS": [{"napTimeSec": 600}], "sleepStartTimestampGMT": "2026-11-13T21:00:00.0",
+}]
+HRV_FULL = {"hrvSummaries": [{"calendarDate": "2026-11-14", "lastNightAvg": 48, "weeklyAvg": 50, "status": "BALANCED",
+                              "baseline": {"lowUpper": 40, "balancedLow": 42, "balancedUpper": 58, "markerValue": 0.5}}]}
+
+
+def _activity(i, day="2026-11-14", **kw):
+    return {"activityId": 9000 + i, "activityName": f"Běh {i}", "startTimeLocal": f"{day} 0{i % 9}:30:00", "startTimeGMT": f"{day} 0{i % 9}:30:00",
+            "activityType": {"typeId": 1, "typeKey": "running"}, "distance": 5000.0 + i, "duration": 1800.0 + i, "calories": 400.0,
+            "averageHR": 150.0, "maxHR": 175.0, "vO2MaxValue": 50.0 + i, "aerobicTrainingEffect": 3.1,
+            "startLatitude": 50.1, "startLongitude": 14.4, "ownerFullName": "Nějaká Osoba", "hasPolyline": True, **kw}
+
+
+def make_full(calls, activities=None, weight_status=200, fitness_status=200):
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        calls.append((request.method, path, dict(request.url.params)))
+        if path.endswith("/personal-api-key/token"):
+            return httpx.Response(200, json={"access_token": "tok"})
+        if "dailysummaries" in path:
+            return httpx.Response(200, json=DAILY_FULL)
+        if "dailySleepSummariesByDate" in path:
+            return httpx.Response(200, json=SLEEP_FULL)
+        if "/hrv-service/" in path:
+            return httpx.Response(200, json=HRV_FULL)
+        if "activities/search" in path:
+            acts = activities if activities is not None else [_activity(1), _activity(2)]
+            off = int(request.url.params.get("start", 0)); lim = int(request.url.params.get("limit", 100))
+            return httpx.Response(200, json=acts[off:off + lim])
+        if "/weight-service/" in path:
+            if weight_status != 200:
+                return httpx.Response(weight_status)
+            return httpx.Response(200, json={"dailyWeightSummaries": [{"summaryDate": "2026-11-14", "latestWeight": {
+                "weight": 82500.0, "bmi": 24.1, "bodyFat": 18.5, "boneMass": 3300, "muscleMass": 38000}}]})
+        if "/fitnessage-service/" in path:
+            if fitness_status != 200:
+                return httpx.Response(fitness_status)
+            return httpx.Response(200, json=[{"fitnessAge": 35.0, "chronologicalAge": 42, "achievableFitnessAge": 30.5, "invalidReason": None}])
+        return httpx.Response(404)
+    return handler
+
+
+@pytest.fixture
+def full_garmin():
+    garmin._token_cache.update(token=None, exp=0.0)
+    calls = []
+    def use(**kw):
+        app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(transport=httpx.MockTransport(make_full(calls, **kw)))
+        return calls
+    use()
+    yield use
+    app.dependency_overrides.pop(garmin.get_http, None)
+
+
+def _metrics(client, **params):
+    return {m["metric"]: m for m in client.get("/metrics", params=params).json()}
+
+
+def test_every_numeric_field_is_stored_but_not_ids_timestamps_or_text(client, full_garmin):
+    r = client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"}).json()
+    assert r["errors"] == []
+    m = _metrics(client)
+    assert m["daily.movement.steps.goal"]["value"] == 10000 and m["daily.movement.steps.distanceInMeters"]["unit"] == "m"
+    assert m["daily.movement.floorsAscended.value"]["value"] == 12
+    assert m["daily.stress.lowStressProportion"]["unit"] == "ratio" and m["daily.stress.totalDurationInMillis"]["unit"] == "ms"
+    assert m["daily.bodyBattery.chargedValue"]["value"] == 55 and m["daily.hydration.valueInMl"]["unit"] == "ml"
+    assert m["daily.wellnessChronology.totalDurationInMillis"]["value"] == 86400000
+    assert m["sleep.averageSpO2Value"]["value"] == 95.5 and m["sleep.sleepScores.totalDuration.value"]["value"] == 90
+    assert m["sleep.sleepNeed.baseline"]["value"] == 480 and m["sleep.awakeCount"]["value"] == 2
+    assert m["hrv.baseline.balancedLow"]["value"] == 42
+    for nepatri in ("daily.userProfilePk", "daily.uuid", "daily.includesWellnessData", "daily.stress.qualifier", "sleep.sleepWindowConfirmed",
+                    "daily.bodyBattery.dynamicFeedbackEvent.bodyBatteryLevel", "daily.bodyBattery.featureVersion",
+                    "sleep.sleepNeed.displayedForTheDay", "hrv.status"):
+        assert nepatri not in m, nepatri
+    assert not [k for k in m if "imestamp" in k or "Nap" in k]                              # časové značky a seznamy se neukládají
+
+
+def test_curated_fields_are_not_duplicated(client, full_garmin):
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"})
+    m = _metrics(client)
+    assert m["steps"]["value"] == 9000 and m["sleep_score"]["value"] == 81 and m["hrv_last_night_avg"]["value"] == 48
+    for dup in ("daily.movement.steps.value", "daily.heartRate.restingValue", "sleep.sleepTimeSeconds", "sleep.sleepScores.overall.value", "hrv.lastNightAvg"):
+        assert dup not in m, dup
+
+
+def test_activities_are_stored_once_without_gps_and_summarised_per_day(client, full_garmin):
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"})
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"})                    # opakování nic nezdvojí
+    acts = client.get("/garmin/activities").json()
+    assert [a["activity_id"] for a in acts] == [9002, 9001]                                   # nejnovější první
+    assert len(acts) == 2 and acts[0]["type_key"] == "running" and acts[0]["avg_hr"] == 150.0
+    m = _metrics(client)
+    assert m["activity.count"]["value"] == 2 and m["activity.duration_s"]["value"] == 1801 + 1802
+    assert m["activity.vo2max"]["value"] == 52.0 and m["activity.distance_m"]["unit"] == "m"
+    raw = client.get(f"/garmin/activities/{acts[0]['activity_id']}").json()["raw"]
+    assert raw["activityName"].startswith("Běh") and "startLatitude" not in raw and "ownerFullName" not in raw   # poloha a vlastník se neukládají
+    assert client.get("/garmin/activities/1").status_code == 404
+    assert client.get("/garmin/activities", params={"from": "2026-11-15"}).json() == []
+    assert TestClient(app).get("/garmin/activities").status_code == 401
+
+
+def test_activities_are_paged_beyond_100(client, full_garmin):
+    full_garmin(activities=[_activity(i, day="2026-11-1%d" % (i % 4)) for i in range(1, 106)])
+    client.post("/garmin/sync", params={"days": 10, "end": "2026-11-14"})
+    assert len(client.get("/garmin/activities", params={"limit": 1000}).json()) == 105
+
+
+def test_weight_and_fitness_age(client, full_garmin):
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"})
+    m = _metrics(client)
+    assert m["body.weight_kg"]["value"] == 82.5 and m["body.muscle_mass_kg"]["value"] == 38.0 and m["body.bone_mass_kg"]["value"] == 3.3   # gramy -> kg
+    assert m["body.fat_pct"]["value"] == 18.5 and m["body.bmi"]["unit"] == ""
+    assert m["fitness.age"]["value"] == 35.0 and m["fitness.chronological_age"]["value"] == 42 and m["fitness.age"]["day"] == "2026-11-14"
+
+
+def test_missing_optional_sources_do_not_fail_the_sync(client, full_garmin):
+    full_garmin(weight_status=404, fitness_status=404)                                       # např. nemáš chytrou váhu
+    r = client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"}).json()
+    assert r["errors"] == [] and "skipped" in r["by_type"]["weight"] and "skipped" in r["by_type"]["fitness"]
+    assert client.get("/garmin/status").json()["last_success"]["ok"] is True
+    assert "steps" in _metrics(client)
+
+
+def test_reprocess_raw_applies_new_rules_to_downloaded_data_once():
+    db = connect(":memory:")
+    import json as j
+    for t, payload in (("dailysummaries", {"data": [{**DAILY_FULL["data"][0], "movement": {"steps": {"value": 1}}}]}),    # starší stažení
+                       ("dailysummaries", DAILY_FULL), ("sleep", SLEEP_FULL), ("hrv", HRV_FULL), ("weight", {"x": 1})):
+        db.execute("INSERT INTO garmin_raw (summary_type, payload) VALUES (?, ?)", (t, j.dumps(payload)))
+    db.commit()
+    n = garmin.reprocess_if_needed(db)
+    assert n and n > 20
+    got = {r["metric"]: r["value"] for r in db.execute("SELECT metric, value FROM metric_daily")}
+    assert got["steps"] == 9000 and got["daily.hydration.valueInMl"] == 1800 and got["sleep.sleepNeed.baseline"] == 480   # pozdější stažení vyhrává
+    assert garmin.reprocess_if_needed(db) is None                                            # podruhé se nic nepřepočítává
+
+
+def test_metric_catalog(client, full_garmin):
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-11-14"})
+    cat = {c["metric"]: c for c in client.get("/metrics/catalog").json()}
+    h = cat["daily.hydration.valueInMl"]
+    assert (h["unit"], h["days"], h["first_day"], h["last_day"], h["min"], h["max"], h["last"]) == ("ml", 1, "2026-11-14", "2026-11-14", 1800, 1800, 1800)
+    assert "steps" in cat and "activity.count" in cat and len(cat) > 40
+    assert TestClient(app).get("/metrics/catalog").status_code == 401
+
+
+def test_prefs_roundtrip_and_validation(client):
+    assert client.get("/prefs").json() == {}
+    assert client.put("/prefs/pripnute", json={"value": ["steps", "daily.hydration.valueInMl"]}).status_code == 200
+    client.put("/prefs/pripnute", json={"value": ["steps"]})                                  # přepsání
+    assert client.get("/prefs").json() == {"pripnute": ["steps"]}
+    assert client.put("/prefs/ŠPATNÝ KLÍČ", json={"value": 1}).status_code == 422
+    assert client.put("/prefs/velke", json={"value": "x" * 25000}).status_code == 413
+    assert TestClient(app).get("/prefs").status_code == 401 and TestClient(app).put("/prefs/a", json={"value": 1}).status_code == 401
+
+
+def test_first_run_after_new_sources_happens_immediately_even_if_recent_success():
+    garmin._token_cache.update(token=None, exp=0.0)
+    db, calls = connect(":memory:"), []
+    garmin.record_run(db, garmin.now_iso(), "auto", True, 8, 100, "")                       # před chvílí úspěšný běh starého typu
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls)) is not None   # přesto proběhne, kvůli novým zdrojům
+    assert db.execute("SELECT 1 FROM meta WHERE key = ?", (autosync.SOURCES_FLAG,)).fetchone()
+    n = len(calls)
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls)) is None    # a od teď zase jen po intervalu
+    assert len(calls) == n
+
+
+def test_first_run_flag_is_not_set_after_failure_and_retry_waits_30_minutes():
+    garmin._token_cache.update(token=None, exp=0.0)
+    db = connect(":memory:")
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory([], token_status=403)) is not None
+    assert db.execute("SELECT 1 FROM meta WHERE key = ?", (autosync.SOURCES_FLAG,)).fetchone() is None
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory([], token_status=403)) is None      # počká
+    later = datetime.now(timezone.utc) + timedelta(minutes=31)
+    assert autosync.maybe_run(db, _auto_settings(), now=later, http_factory=_factory([])) is not None
+    assert db.execute("SELECT 1 FROM meta WHERE key = ?", (autosync.SOURCES_FLAG,)).fetchone()

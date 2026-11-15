@@ -10,6 +10,7 @@ Surové odpovědi se ukládají do `garmin_raw`, takže jde mapování polí kdy
 data přepočítat bez nového stahování.
 """
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -21,6 +22,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from .config import Settings, get_settings
+from .garmin_data import flatten, normalize_fitness, normalize_weight, save_activities
 
 BASE = "https://personal.connectapi.garmin.com"
 TOKEN_URL = f"{BASE}/personalapitoken-service/personal-api/personal-api-key/token"
@@ -99,7 +101,7 @@ def _rows(day: str | None, pairs: list[tuple[str, str, Any]]) -> list[tuple]:
 
 
 def normalize_daily(item: dict) -> list[tuple]:
-    return _rows(item.get("calendarDate"), [
+    return flatten(item, "daily") + _rows(item.get("calendarDate"), [
         ("steps", "count", _dig(item, "movement", "steps", "value")),
         ("resting_hr", "bpm", _dig(item, "heartRate", "restingValue")),
         ("min_hr", "bpm", _dig(item, "heartRate", "minValue")),
@@ -136,7 +138,7 @@ def normalize_daily_flat(item: dict) -> list[tuple]:
 
 
 def normalize_sleep(item: dict) -> list[tuple]:
-    return _rows(item.get("calendarDate"), [
+    return flatten(item, "sleep") + _rows(item.get("calendarDate"), [
         ("sleep_seconds", "s", item.get("sleepTimeSeconds")),
         ("sleep_deep_seconds", "s", item.get("deepSleepSeconds")),
         ("sleep_light_seconds", "s", item.get("lightSleepSeconds")),
@@ -148,7 +150,7 @@ def normalize_sleep(item: dict) -> list[tuple]:
 
 
 def normalize_hrv(item: dict) -> list[tuple]:
-    return _rows(item.get("calendarDate"), [
+    return flatten(item, "hrv") + _rows(item.get("calendarDate"), [
         ("hrv_last_night_avg", "ms", item.get("lastNightAvg")),
         ("hrv_weekly_avg", "ms", item.get("weeklyAvg")),
     ])
@@ -175,6 +177,20 @@ def _save(db: sqlite3.Connection, summary_type: str, payload: Any, rows: list[tu
             row,
         )
     db.commit()
+
+
+def fetch_activities(client: "GarminClient", a: str, b: str) -> list[dict]:
+    """Všechny aktivity v období (stránkování po 100, nejvýš 2000)."""
+    out, offset = [], 0
+    while True:
+        page = client.get("/activitylist-service/activities/search/activities",
+                          {"startDate": a, "endDate": b, "start": offset, "limit": 100})
+        if not isinstance(page, list) or not page:
+            return out
+        out += page
+        if len(page) < 100 or len(out) >= 2000:
+            return out
+        offset += 100
 
 
 FALLBACK_DAYS = 60       # nejvýš tolik dnů se za jedno spuštění dotáhne záložním endpointem po jednom dni
@@ -220,19 +236,26 @@ def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -
             day -= timedelta(days=1)
         return None
 
-    def run(name, chunk_days, fetch, extract, normalize, fallback=None):
+    def run(name, chunk_days, fetch, extract, normalize, fallback=None, optional=False, post=None, raw=None):
+        """optional: chyba zdroje (např. váha, když nemáš váhu) se jen poznamená a synchronizace se kvůli ní nepovažuje za neúspěšnou.
+        post(items) uloží další věci (aktivity) a vrátí řádky metrik; raw(payload) zmenší, co se uloží do garmin_raw."""
         failed = 0
         for a, b in _chunks(start, end, chunk_days):
             try:
                 payload = fetch(a.isoformat(), b.isoformat())
                 items = extract(payload) if payload else []
                 rows = [r for it in items for r in normalize(it)]
-                _save(db, name, payload, rows)
+                if post:
+                    rows += post(items)
+                _save(db, name, raw(payload) if raw else payload, rows)
                 account(name, len(items), rows)
                 failed = 0
             except (GarminError, httpx.HTTPError, ValueError) as e:
                 failed += 1
                 info_for(name)
+                if optional:
+                    info_for(name)["skipped"] = str(e)[:200]
+                    break
                 msg = f"{name} {a}..{b}: {e}"
                 if fallback:
                     problem = fallback(a, b)
@@ -251,20 +274,20 @@ def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -
     run("hrv", 28,
         lambda a, b: client.get(f"/hrv-service/hrv/daily/{a}/{b}"),
         lambda p: p.get("hrvSummaries", []), normalize_hrv)
+    run("activities", 31, lambda a, b: fetch_activities(client, a, b), lambda p: p, lambda it: [],
+        post=lambda items: save_activities(db, items), raw=lambda p: {"count": len(p)})          # celé aktivity jsou v tabulce activity
+    run("weight", 90, lambda a, b: client.get(f"/weight-service/weight/range/{a}/{b}"),
+        lambda p: p.get("dailyWeightSummaries", []), normalize_weight, optional=True)
+    try:                                                                                          # fitness věk: jedna hodnota k poslednímu dni
+        fa = client.get(f"/fitnessage-service/fitnessage/v2/{end.isoformat()}")
+        fitness = normalize_fitness(fa[0] if isinstance(fa, list) and fa else fa, end.isoformat())
+        _save(db, "fitness", fa, fitness)
+        account("fitness", 1 if fitness else 0, fitness)
+    except (GarminError, httpx.HTTPError, ValueError) as e:
+        info_for("fitness")["skipped"] = str(e)[:200]
     return {"from": start.isoformat(), "to": end.isoformat(), "metrics_stored": stored,
             "by_type": by_type, "errors": errors}
 
-
-def get_db(request: Request) -> sqlite3.Connection:
-    return request.app.state.db
-
-
-def get_http() -> Iterator[httpx.Client]:
-    with httpx.Client(timeout=30) as client:
-        yield client
-
-
-# ---------- jedna synchronizace naráz, historie běhů ----------
 
 SYNC_LOCK = threading.Lock()      # ruční a automatická synchronizace se nesmí prolínat (sdílený token i databáze)
 LOCK_TIMEOUT = 90.0               # jak dlouho ruční synchronizace čeká na dokončení běžící
@@ -285,12 +308,14 @@ def record_run(db: sqlite3.Connection, started: str, source: str, ok: bool, days
     db.commit()
 
 
-def last_run_time(db: sqlite3.Connection, source: str | None = None, ok_only: bool = False) -> datetime | None:
+def last_run_time(db: sqlite3.Connection, source: str | None = None, ok_only: bool = False, failed_only: bool = False) -> datetime | None:
     sql, args = "SELECT MAX(finished_at) FROM sync_run WHERE 1=1", []
     if source:
         sql += " AND source = ?"; args.append(source)
     if ok_only:
         sql += " AND ok = 1"
+    if failed_only:
+        sql += " AND ok = 0"
     v = db.execute(sql, args).fetchone()[0]
     return datetime.fromisoformat(v) if v else None
 
@@ -309,6 +334,48 @@ def run_sync(db: sqlite3.Connection, client: GarminClient, start: date, end: dat
         raise
     finally:
         SYNC_LOCK.release()
+
+
+REPROCESS_VERSION = "flatten_v1"
+
+
+def reprocess_raw(db: sqlite3.Connection) -> int:
+    """Znovu zpracuje už stažená surová data (garmin_raw) novými pravidly, bez nového stahování z Garminu.
+    Pozdější stažení přepíše dřívější, protože se jde od nejstaršího."""
+    n, last = 0, 0
+    sources = {"dailysummaries": (lambda p: p.get("data", []) if isinstance(p, dict) else [], normalize_daily),
+               "sleep": (lambda p: p if isinstance(p, list) else [], normalize_sleep),
+               "hrv": (lambda p: p.get("hrvSummaries", []) if isinstance(p, dict) else [], normalize_hrv)}
+    while True:
+        rows = db.execute("SELECT id, summary_type, payload FROM garmin_raw WHERE id > ? ORDER BY id LIMIT 40", (last,)).fetchall()
+        if not rows:
+            break
+        for r in rows:
+            last = r["id"]
+            if r["summary_type"] not in sources:
+                continue
+            try:
+                payload = json.loads(r["payload"])
+            except ValueError:
+                continue
+            extract, normalize = sources[r["summary_type"]]
+            for item in extract(payload):
+                for row in normalize(item):
+                    db.execute("INSERT INTO metric_daily (source, metric, day, value, unit) VALUES (?,?,?,?,?) "
+                               "ON CONFLICT(source, metric, day) DO UPDATE SET value=excluded.value, unit=excluded.unit", row)
+                    n += 1
+        db.commit()
+    return n
+
+
+def reprocess_if_needed(db: sqlite3.Connection) -> int | None:
+    if db.execute("SELECT 1 FROM meta WHERE key = ?", (REPROCESS_VERSION,)).fetchone():
+        return None
+    n = reprocess_raw(db)
+    db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (REPROCESS_VERSION, now_iso()))
+    db.commit()
+    logging.getLogger("uvicorn.error").info("reprocess: z uložených surových dat přepočteno %s hodnot", n)
+    return n
 
 
 def get_db(request: Request) -> sqlite3.Connection:
@@ -355,3 +422,31 @@ def garmin_status(db: sqlite3.Connection = Depends(get_db), settings: Settings =
         "last_auto": _run_json(db, "source = 'auto'"),
         "last_success": _run_json(db, "ok = 1"),
     }
+
+
+_ACT_COLS = ("activity_id, day, start_local, type_key, name, duration_s, distance_m, calories, avg_hr, max_hr, "
+             "elevation_gain, avg_speed, steps, aerobic_te, anaerobic_te, vo2max")
+
+
+@router.get("/activities")
+def list_activities(
+    start: date | None = Query(None, alias="from"),
+    end: date | None = Query(None, alias="to"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: sqlite3.Connection = Depends(get_db),
+):
+    sql, args = f"SELECT {_ACT_COLS} FROM activity WHERE 1=1", []
+    if start:
+        sql += " AND day >= ?"; args.append(start.isoformat())
+    if end:
+        sql += " AND day <= ?"; args.append(end.isoformat())
+    return [dict(r) for r in db.execute(sql + " ORDER BY start_local DESC LIMIT ?", (*args, limit))]
+
+
+@router.get("/activities/{activity_id}")
+def activity_detail(activity_id: int, db: sqlite3.Connection = Depends(get_db)):
+    """Všechna pole aktivity, jak je poslal Garmin (bez GPS polohy)."""
+    r = db.execute("SELECT activity_id, raw FROM activity WHERE activity_id = ?", (activity_id,)).fetchone()
+    if r is None:
+        raise HTTPException(status_code=404, detail="Aktivita neexistuje")
+    return {"activity_id": r["activity_id"], "raw": json.loads(r["raw"])}

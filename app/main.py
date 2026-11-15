@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 
-from . import garmin, labs, persons, records, status
+from . import garmin, labs, persons, prefs, records, status
 from .auth import require_auth
 from .autosync import scheduler
 from .config import get_settings
@@ -19,6 +19,7 @@ async def lifespan(app: FastAPI):
     if not hasattr(app.state, "db"):             # v testech je databáze dodaná zvenku a nic na pozadí neběží
         app.state.db = connect(get_settings().health_db_path)
         apply_seed(app.state.db, get_settings().seed_json_b64)
+        garmin.reprocess_if_needed(app.state.db)       # jednorázově: nová pravidla na už stažená data
         task = asyncio.create_task(scheduler(get_settings()))
     yield
     if task:
@@ -40,6 +41,7 @@ app.include_router(garmin.router, dependencies=[Depends(require_auth)])
 app.include_router(records.router, dependencies=[Depends(require_auth)])
 app.include_router(labs.router, dependencies=[Depends(require_auth)])
 app.include_router(persons.router, dependencies=[Depends(require_auth)])
+app.include_router(prefs.router, dependencies=[Depends(require_auth)])
 app.include_router(status.router, dependencies=[Depends(require_auth)])
 
 

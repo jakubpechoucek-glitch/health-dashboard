@@ -115,6 +115,19 @@ def list_metrics(
     return [dict(r) for r in db.execute(sql + " ORDER BY day, metric", args)]
 
 
+@router.get("/metrics/catalog")
+def metrics_catalog(db: sqlite3.Connection = Depends(get_db)):
+    """Přehled všech uložených metrik: kolik dní, od kdy do kdy, rozsah hodnot a poslední hodnota."""
+    last = {r["metric"]: r["value"] for r in db.execute(
+        "SELECT metric, value FROM metric_daily WHERE (metric, day) IN (SELECT metric, MAX(day) FROM metric_daily GROUP BY metric)")}
+    return [
+        {"metric": r["metric"], "unit": r["unit"], "days": r["days"], "first_day": r["first_day"], "last_day": r["last_day"],
+         "min": r["vmin"], "max": r["vmax"], "last": last.get(r["metric"])}
+        for r in db.execute("SELECT metric, MAX(unit) AS unit, COUNT(*) AS days, MIN(day) AS first_day, MAX(day) AS last_day, "
+                            "MIN(value) AS vmin, MAX(value) AS vmax FROM metric_daily GROUP BY metric ORDER BY metric")
+    ]
+
+
 @router.get("/timeline")
 def timeline(person_id: int = 1, db: sqlite3.Connection = Depends(get_db)):
     """Společná časová osa jedné osoby: události + krevní rozbory (metriky Garminu jsou přes /metrics)."""

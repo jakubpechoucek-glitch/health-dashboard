@@ -17,6 +17,31 @@ Aplikace data **stahuje sama (pull)**. Žádný webhook ani veřejná adresa pro
 
 Garmin pošle e-mail zhruba týden před vypršením klíče. Pak je potřeba vytvořit nový klíč a vyměnit `GARMIN_API_KEY`.
 
+## Všechny metriky
+
+Kromě sedmi hlavních grafů aplikace ukládá **všechny číselné hodnoty**, které Garmin vrací, a zobrazuje je v katalogu (sekce **Všechny metriky z Garminu**):
+
+| Zdroj (endpoint Garminu) | Co se ukládá | Jak se jmenuje metrika |
+|---|---|---|
+| `usersummary-service/v2/dailysummaries` | každé číselné pole denního souhrnu: pohyb (kroky, cíle, vzdálenost, patra), srdce, stres (podíly a doby), Body Battery (nabito, vybito…), hydratace, kalorie, dech, SpO2, intenzivní minuty | `daily.<cesta.k.poli>` |
+| `sleep-service/sleep/dailySleepSummariesByDate` | fáze spánku, SpO2 a dech ve spánku, probuzení, stres ve spánku, dílčí skóre spánku, potřeba spánku, sladění spánku | `sleep.<cesta>` |
+| `hrv-service/hrv/daily` | HRV minulé noci a týdne, pásma základní úrovně | `hrv.<cesta>` |
+| `activitylist-service/activities/search/activities` | **aktivity** (tabulka `activity`: běh, kolo, posilování… se všemi poli bez GPS polohy) a denní souhrn aktivit | `activity.count`, `.duration_s`, `.distance_m`, `.calories`, `.vo2max`, `.aerobic_te_max` |
+| `weight-service/weight/range` | váha a složení těla (pokud máš chytrou váhu): hmotnost, BMI, tuk, voda, kosti, svaly, viscerální tuk | `body.*` |
+| `fitnessage-service/fitnessage/v2` | fitness věk (jedna hodnota ke dni synchronizace) | `fitness.*` |
+
+- **Nic se neukládá, co není číslo**: texty (např. kvalifikátor stresu), pravdivostní hodnoty, seznamy, identifikátory a časové značky se vynechávají.
+  Pole, která už mají své pojmenování (kroky, klidový tep, skóre spánku…), se neduplikují.
+- **Katalog** (`GET /metrics/catalog`) ukazuje u každé metriky, kolik dní je, od kdy do kdy a poslední hodnotu. V UI se dá hledat, zaškrtnutím se metrika **připne jako graf**
+  (výběr se ukládá na server, `GET/PUT /prefs`, a platí na všech zařízeních). Jednotky se převádějí na čitelné (sekundy a milisekundy na hodiny nebo minuty, podíly na %, metry na km).
+- **Aktivity** jsou tabulka za zvolené období (`GET /garmin/activities`); klepnutím na řádek se zobrazí všechna pole od Garminu (`GET /garmin/activities/{id}`).
+  **GPS poloha a údaje o vlastníkovi se do databáze neukládají.**
+- **Zdroje, které nemáš** (např. váha bez chytré váhy), synchronizaci nepokazí: poznamenají se jako „skipped“ a běh se považuje za úspěšný.
+- **Přepočet starších dat**: při prvním startu po aktualizaci se z už uložených surových odpovědí (`garmin_raw`) přepočítají nová pravidla, takže historické dny dostanou všechny metriky bez nového stahování.
+  Aktivity, váha a fitness věk se ale do surových dat dříve nestahovaly. Pro starší období spusť **Stáhnout celou historii**.
+- Nezahrnuto (zatím): vteřinové a minutové řady (tep během dne, stres během dne, Body Battery v čase), podrobné záznamy aktivit (FIT soubory), menstruační cyklus, záznamy jídla.
+  Endpointy v API existují, jde je přidat.
+
 ## Automatická synchronizace
 
 Aplikace si Garmin stahuje **sama**: každých `AUTO_SYNC_HOURS` hodin (výchozí 6) znovu obnoví posledních `AUTO_SYNC_DAYS + 1` dní (výchozí 8).
