@@ -539,3 +539,85 @@ def test_names_from_different_labs_match_despite_unicode_forms():
     c = {k for k in by_name(labs.parse_lab_text(TEXT_C))}
     d = {k for k in by_name(labs.parse_lab_text(TEXT_D))}
     assert {"GF CKD-EPI", "Hodnocení CKD dle eGFR", "WBC - leukocyty", "Glukóza (moč)", "Specifická hustota (moč)"} <= (c & d)
+
+
+# ---------- automatická synchronizace ----------
+
+from datetime import datetime, timedelta, timezone
+from app import autosync
+
+
+def _auto_settings(**kw):
+    return Settings(garmin_api_key="test-klic", auto_sync_hours=6, auto_sync_days=7, allowed_emails="ja@example.com", **kw)
+
+
+def _factory(calls, **kw):
+    return lambda: httpx.Client(transport=httpx.MockTransport(make_garmin(calls, **kw)))
+
+
+def test_is_due_rules():
+    now = datetime(2026, 11, 15, 12, 0, tzinfo=timezone.utc)
+    h = timedelta(hours=1)
+    assert autosync.is_due(None, None, now, 6)                                   # ještě nikdy neběžela
+    assert not autosync.is_due(now - 5 * h, now - 5 * h, now, 6)                 # úspěšná před 5 h, interval 6 h
+    assert autosync.is_due(now - 7 * h, now - 7 * h, now, 6)
+    assert not autosync.is_due(None, now - timedelta(minutes=10), now, 6)        # po selhání ne dřív než za 30 min
+    assert autosync.is_due(None, now - timedelta(minutes=31), now, 6)
+    assert not autosync.is_due(now - 1 * h, now - 40 * h, now, 6)
+
+
+def test_auto_sync_runs_when_due_records_it_and_waits_for_next_interval():
+    garmin._token_cache.update(token=None, exp=0.0)
+    db, calls = connect(":memory:"), []
+    r = autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls))
+    assert r["metrics_stored"] > 0 and r["errors"] == []
+    run = db.execute("SELECT * FROM sync_run").fetchone()
+    assert (run["source"], run["ok"], run["days"], run["error"]) == ("auto", 1, 8, "")
+    n = len(calls)
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls)) is None    # hned po tom není na řadě
+    assert len(calls) == n                                                                    # a nevolá se Garmin
+    later = datetime.now(timezone.utc) + timedelta(hours=7)
+    assert autosync.maybe_run(db, _auto_settings(), now=later, http_factory=_factory(calls)) is not None
+    assert db.execute("SELECT COUNT(*) FROM sync_run").fetchone()[0] == 2
+
+
+def test_auto_sync_failure_is_recorded_without_secrets_and_retried_later():
+    garmin._token_cache.update(token=None, exp=0.0)
+    db = connect(":memory:")
+    r = autosync.maybe_run(db, _auto_settings(), http_factory=_factory([], token_status=403))
+    assert r["metrics_stored"] == 0
+    run = db.execute("SELECT * FROM sync_run").fetchone()
+    assert run["ok"] == 0 and "HTTP 403" in run["error"] and "test-klic" not in run["error"]
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory([])) is None                   # počká 30 minut
+    soon = datetime.now(timezone.utc) + timedelta(minutes=31)
+    assert autosync.maybe_run(db, _auto_settings(), now=soon, http_factory=_factory([], token_status=403)) is not None
+
+
+def test_auto_sync_disabled_or_without_key_does_nothing():
+    db = connect(":memory:")
+    assert autosync.maybe_run(db, Settings(garmin_api_key="k", auto_sync_hours=0)) is None
+    assert autosync.maybe_run(db, Settings(garmin_api_key="", auto_sync_hours=6)) is None
+    assert db.execute("SELECT COUNT(*) FROM sync_run").fetchone()[0] == 0
+
+
+def test_garmin_status_reports_auto_and_manual_runs(client, garmin_calls):
+    assert client.get("/garmin/status").json()["last_auto"] is None
+    client.post("/garmin/sync", params={"days": 3})                                         # ruční běh se zaznamená jako manual
+    st = client.get("/garmin/status").json()
+    assert st["key_configured"] is True and st["auto"] == {"enabled": True, "interval_hours": 6, "days": 7}
+    assert st["last_auto"] is None and st["last_success"]["source"] == "manual" and st["last_success"]["ok"] is True
+    assert TestClient(app).get("/garmin/status").status_code == 401
+
+
+def test_manual_sync_waits_for_running_one_then_gives_409(client, garmin_calls, monkeypatch):
+    monkeypatch.setattr(garmin, "LOCK_TIMEOUT", 0.05)
+    with garmin.SYNC_LOCK:                                                                  # simuluje běžící automatickou synchronizaci
+        assert client.post("/garmin/sync", params={"days": 3}).status_code == 409
+        assert autosync.maybe_run(connect(":memory:"), _auto_settings(), http_factory=_factory([])) is None
+    assert client.post("/garmin/sync", params={"days": 3}).status_code == 200                # po uvolnění zase funguje
+
+
+def test_scheduler_exits_quietly_when_disabled():
+    import asyncio
+    asyncio.run(autosync.scheduler(Settings(auto_sync_hours=0)))
+    asyncio.run(autosync.scheduler(Settings(auto_sync_hours=6, garmin_api_key="")))

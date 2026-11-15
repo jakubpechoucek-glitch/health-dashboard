@@ -19,6 +19,18 @@ CREATE TABLE IF NOT EXISTS metric_daily (
     PRIMARY KEY (source, metric, day)
 );
 
+-- Historie synchronizací Garminu (automatických i ručních)
+CREATE TABLE IF NOT EXISTS sync_run (
+    id INTEGER PRIMARY KEY,
+    started_at TEXT NOT NULL,      -- ISO, UTC
+    finished_at TEXT NOT NULL,
+    source TEXT NOT NULL,          -- auto | manual
+    ok INTEGER NOT NULL,
+    days INTEGER NOT NULL,
+    metrics_stored INTEGER NOT NULL,
+    error TEXT NOT NULL DEFAULT ''
+);
+
 -- Osoby, jejichž zdraví se sleduje. Osoba 1 je vlastník (Garmin patří jemu).
 CREATE TABLE IF NOT EXISTS person (
     id INTEGER PRIMARY KEY,
@@ -88,6 +100,10 @@ def connect(path: str) -> sqlite3.Connection:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    if path != ":memory:":              # WAL: čtení neblokuje zápis, takže automatická synchronizace nebrzdí aplikaci
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
     _migrate(conn)
     return conn

@@ -6,6 +6,8 @@ class Settings(BaseSettings):
 
     health_db_path: str = "data/health.db"
     garmin_api_key: str = ""
+    auto_sync_hours: int = 6      # jak často se Garmin stahuje sám (0 = vypnuto)
+    auto_sync_days: int = 7       # kolik posledních dní se při každém stažení obnoví (dohání pozdě dopočítané hodnoty)
 
     # Přihlášení přes Google = stejný Supabase projekt jako Rozcestník (hodnoty jsou veřejné, jako v auth.js).
     supabase_url: str = "https://unoefgbzymlwwehgzusf.supabase.co"

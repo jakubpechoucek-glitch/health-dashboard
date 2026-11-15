@@ -17,6 +17,21 @@ Aplikace data **stahuje sama (pull)**. Žádný webhook ani veřejná adresa pro
 
 Garmin pošle e-mail zhruba týden před vypršením klíče. Pak je potřeba vytvořit nový klíč a vyměnit `GARMIN_API_KEY`.
 
+## Automatická synchronizace
+
+Aplikace si Garmin stahuje **sama**: každých `AUTO_SYNC_HOURS` hodin (výchozí 6) znovu obnoví posledních `AUTO_SYNC_DAYS + 1` dní (výchozí 8).
+Obnovují se i dny zpátky, protože Garmin některé hodnoty (spánek, HRV) dopočítává se zpožděním a hodnota dne se přepisuje.
+
+- **Běží uvnitř webové služby** (`app/autosync.py`), ne jako samostatný cron na Renderu: databáze leží na disku, který jde připojit jen k jedné službě,
+  a cron by ji neviděl. Navíc aplikace zná `GARMIN_API_KEY` a nepotřebuje přihlášení přes Google.
+- **Stav je v databázi** (`sync_run`), takže restart služby nic nezpůsobí: po startu (zhruba za 90 s) se zjistí, kdy proběhla poslední úspěšná synchronizace,
+  a spustí se jen když je na řadě. Kontrola běží každých 10 minut.
+- **Po chybě** se další pokus zkusí nejdřív za 30 minut (bez bušení do API). Ruční synchronizace čeká na dokončení běžící (max. 90 s), potom vrátí 409.
+- Na záložce **Garmin** je řádek se stavem (kdy proběhla poslední úspěšná, případně čím selhala). Když automatické pokusy selhávají, nejčastější příčinou je
+  **vypršelý API klíč** (platí 30 dní až rok, Garmin pošle e-mail týden předem): vytvoř nový v Garmin Connect a vlož ho do `GARMIN_API_KEY`.
+- Vypnutí: `AUTO_SYNC_HOURS=0`. Databáze používá režim WAL (soubory `health.db-wal` a `-shm` vedle databáze jsou v pořádku), aby synchronizace nebrzdila aplikaci.
+- Do logu se píšou jen počty (`autosync: hotovo, uloženo N hodnot`), nikdy obsah dat ani klíč. Záznamy o bězích jsou v `GET /garmin/status`.
+
 ## Synchronizace
 
 `POST /garmin/sync?days=7&end=2026-11-15` (jen přihlášený vlastník) stáhne N dní (1 až 366) končících dnem `end` (výchozí dnes).

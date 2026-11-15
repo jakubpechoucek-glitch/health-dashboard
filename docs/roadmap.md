@@ -4,7 +4,7 @@
 - [x] Garmin Personal API: klient, token, synchronizace denních souhrnů, spánku a HRV (testy s mock serverem)
 - [ ] První ostrá synchronizace: ověřit tvar tokenu a mapování polí na skutečných datech
 - [x] Historický import po úsecích s průběhem, zastavením a navázáním; grafy za rok a 5 let (průměry po skupinách dnů)
-- [ ] Pravidelná synchronizace (Render cron)
+- [x] Pravidelná automatická synchronizace Garminu uvnitř aplikace (každých 6 h, záznam o bězích, stav v UI)
 - [x] UI: grafy metrik z Garminu (kroky, klidový tep, spánek, skóre spánku, HRV, stres, Body Battery), filtr 14 / 30 / 90 dní / rok, tabulka
 - [x] UI: události a odběry vyznačené v grafech (▲ na ose, název v tooltipu); formulář pro přidání a mazání událostí
 - [x] Import krevních rozborů z PDF (extrakce + náhled a potvrzení), tabulka rozborů po odběrech

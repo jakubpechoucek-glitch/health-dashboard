@@ -207,6 +207,7 @@
     <button id="hist-stop" hidden>Zastavit</button>
     <span class="msg" id="hist-stav" role="status"></span>
   </div>
+  <p class="msg" id="auto-stav"></p>
   <p class="msg" id="sync-stav" role="status"></p>
   <pre class="msg" id="sync-detail" style="white-space:pre-wrap;font:.8rem/1.5 ui-monospace,monospace;margin:0 0 8px"></pre>
 
@@ -1053,6 +1054,27 @@
     finally { tl.disabled = false; }
   });
 
+  // ---------- stav automatické synchronizace Garminu ----------
+  const pred = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return "právě teď"; if (m < 60) return `před ${m} min`;
+    const h = Math.round(m / 60); return h < 24 ? `před ${h} h` : `před ${Math.round(h / 24)} d`; };
+  function vykresliAuto(st) {
+    const e = $("auto-stav"); e.hidden = !jeVlastnik(); if (!jeVlastnik()) return;
+    let text, chyba = false;
+    if (!st.key_configured) { text = "Automatická synchronizace nemůže běžet: chybí GARMIN_API_KEY v nastavení služby."; chyba = true; }
+    else if (!st.auto.enabled) text = "Automatická synchronizace je vypnutá (AUTO_SYNC_HOURS=0).";
+    else {
+      const ok = st.last_success;
+      text = `Automatická synchronizace: každých ${st.auto.interval_hours} h, pokaždé znovu stáhne posledních ${st.auto.days + 1} dní. ` +
+        (ok ? `Poslední úspěšná ${pred(ok.finished_at)}${ok.source === "manual" ? " (ruční)" : ""}, ${ok.metrics_stored} hodnot.` : "Zatím žádná neproběhla.");
+      const a = st.last_auto;
+      if (a && !a.ok && (!ok || new Date(a.finished_at) > new Date(ok.finished_at))) {
+        text += ` ⚠ Poslední automatický pokus ${pred(a.finished_at)} selhal: ${a.error || "neznámá chyba"}. Pokud to trvá, mohl vypršet API klíč: vytvoř nový v Garmin Connect a vlož ho do proměnné GARMIN_API_KEY.`;
+        chyba = true;
+      }
+    }
+    e.textContent = text; e.className = "msg" + (chyba ? " err" : "");
+  }
+
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
@@ -1065,6 +1087,7 @@
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
       if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");     // Garmin patří jen vlastníkovi
       api("/status").then(vykresliStav).catch(() => {});
+      if (jeVlastnik()) api("/garmin/status").then(vykresliAuto).catch(() => {}); else vykresliAuto({});
     } finally { $("grafy").classList.remove("nacitam"); }
   }
 

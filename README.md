@@ -24,7 +24,8 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 
 | Metoda | Cesta | K čemu |
 |---|---|---|
-| POST | `/garmin/sync?days=7` | stáhne data z Garmin Personal API (pull) |
+| POST | `/garmin/sync?days=7` | ručně stáhne data z Garmin Personal API (pull) |
+| GET | `/garmin/status` | stav automatické synchronizace (poslední běhy) |
 | GET | `/metrics?metric=&from=&to=` | denní metriky (kroky, klidový tep, spánek…) |
 | POST/GET | `/labs` | krevní rozbory (ruční zadání, výpis) |
 | POST | `/labs/import/preview`, `/labs/bulk` | import rozborů z PDF s náhledem |

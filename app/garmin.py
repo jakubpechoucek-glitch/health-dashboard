@@ -11,9 +11,10 @@ data přepočítat bez nového stahování.
 """
 import json
 import sqlite3
+import threading
 import time
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -263,6 +264,62 @@ def get_http() -> Iterator[httpx.Client]:
         yield client
 
 
+# ---------- jedna synchronizace naráz, historie běhů ----------
+
+SYNC_LOCK = threading.Lock()      # ruční a automatická synchronizace se nesmí prolínat (sdílený token i databáze)
+LOCK_TIMEOUT = 90.0               # jak dlouho ruční synchronizace čeká na dokončení běžící
+
+
+class SyncBusy(Exception):
+    pass
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def record_run(db: sqlite3.Connection, started: str, source: str, ok: bool, days: int, stored: int, error: str) -> None:
+    db.execute("INSERT INTO sync_run (started_at, finished_at, source, ok, days, metrics_stored, error) VALUES (?,?,?,?,?,?,?)",
+               (started, now_iso(), source, int(ok), days, stored, error[:500]))
+    db.execute("DELETE FROM sync_run WHERE id NOT IN (SELECT id FROM sync_run ORDER BY id DESC LIMIT 300)")
+    db.commit()
+
+
+def last_run_time(db: sqlite3.Connection, source: str | None = None, ok_only: bool = False) -> datetime | None:
+    sql, args = "SELECT MAX(finished_at) FROM sync_run WHERE 1=1", []
+    if source:
+        sql += " AND source = ?"; args.append(source)
+    if ok_only:
+        sql += " AND ok = 1"
+    v = db.execute(sql, args).fetchone()[0]
+    return datetime.fromisoformat(v) if v else None
+
+
+def run_sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date, source: str) -> dict:
+    """Synchronizace pod zámkem, s uloženým záznamem o výsledku (bez obsahu dat, jen počty a text chyby)."""
+    if not SYNC_LOCK.acquire(timeout=LOCK_TIMEOUT):
+        raise SyncBusy()
+    started = now_iso()
+    try:
+        result = sync(db, client, start, end)
+        record_run(db, started, source, not result["errors"], (end - start).days + 1, result["metrics_stored"], "; ".join(result["errors"]))
+        return result
+    except Exception as e:
+        record_run(db, started, source, False, (end - start).days + 1, 0, f"{type(e).__name__}: {e}")
+        raise
+    finally:
+        SYNC_LOCK.release()
+
+
+def get_db(request: Request) -> sqlite3.Connection:
+    return request.app.state.db
+
+
+def get_http() -> Iterator[httpx.Client]:
+    with httpx.Client(timeout=30) as client:
+        yield client
+
+
 @router.post("/sync")
 def sync_endpoint(
     days: int = Query(7, ge=1, le=366, description="Kolik dní stáhnout (počítáno zpět od `end`)"),
@@ -278,4 +335,23 @@ def sync_endpoint(
     last = end or date.today()
     if last > date.today():
         raise HTTPException(status_code=400, detail="end nesmí být v budoucnosti")
-    return sync(db, GarminClient(http, settings.garmin_api_key), last - timedelta(days=days - 1), last)
+    try:
+        return run_sync(db, GarminClient(http, settings.garmin_api_key), last - timedelta(days=days - 1), last, "manual")
+    except SyncBusy:
+        raise HTTPException(status_code=409, detail="Právě běží jiná synchronizace, zkus to za chvíli")
+
+
+def _run_json(db: sqlite3.Connection, where: str) -> dict | None:
+    r = db.execute(f"SELECT started_at, finished_at, source, ok, days, metrics_stored, error FROM sync_run WHERE {where} ORDER BY id DESC LIMIT 1").fetchone()
+    return {**dict(r), "ok": bool(r["ok"])} if r else None
+
+
+@router.get("/status")
+def garmin_status(db: sqlite3.Connection = Depends(get_db), settings: Settings = Depends(get_settings)):
+    """Stav automatické synchronizace pro UI."""
+    return {
+        "key_configured": bool(settings.garmin_api_key),
+        "auto": {"enabled": settings.auto_sync_hours > 0, "interval_hours": settings.auto_sync_hours, "days": settings.auto_sync_days},
+        "last_auto": _run_json(db, "source = 'auto'"),
+        "last_success": _run_json(db, "ok = 1"),
+    }
