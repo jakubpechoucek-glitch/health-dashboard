@@ -4,7 +4,7 @@ Data jsou citlivá (zdraví, genetika) a po úniku nejdou vzít zpět.
 
 ## Pravidla
 
-- **Přihlášení vždy.** Každý požadavek na data vyžaduje heslo (`APP_PASSWORD`). Při jeho absenci aplikace nic nevydá.
+- **Přihlášení vždy.** Každý požadavek na data vyžaduje přihlášení Googlem a e-mail z `ALLOWED_EMAILS` (jen vlastník, ne celá rodina). Bez nastavení aplikace nic nevydá.
 - **Hosting:** aktuálně Render (viz [deploy-render.md](deploy-render.md)). Data tak leží na cizím serveru; lokální běh zůstává možnou alternativou.
 - **Do repa nikdy:** `data/`, `.env`, `*.db`, `*.fit`, `*.pdf`. Chrání `.gitignore`,
   pre-commit hook `no-health-data` a `gitleaks`.

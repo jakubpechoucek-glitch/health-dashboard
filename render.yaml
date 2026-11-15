@@ -13,9 +13,7 @@ services:
     envVars:
       - key: HEALTH_DB_PATH
         value: /data/health.db
-      - key: APP_USER
-        value: jakub
-      - key: APP_PASSWORD
-        sync: false          # zadáš ručně v Renderu, nikdy do gitu
+      - key: ALLOWED_EMAILS
+        sync: false          # tvůj e-mail, zadáš ručně v Renderu, nikdy do gitu
       - key: GARMIN_API_KEY
         sync: false

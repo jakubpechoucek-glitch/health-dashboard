@@ -1,17 +1,26 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app import auth
 from app.config import Settings, get_settings
 from app.db import connect
 from app.main import app
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     app.state.db = connect(":memory:")
-    app.dependency_overrides[get_settings] = lambda: Settings(garmin_webhook_token="tajne", app_user="u", app_password="p")
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        garmin_webhook_token="tajne", allowed_emails="ja@example.com"
+    )
+    auth._CACHE.clear()
+    # "Supabase": token "ok-ja" patří vlastníkovi, "ok-jiny" jinému členu rodiny
+    monkeypatch.setattr(
+        auth, "fetch_email",
+        lambda token, settings: {"ok-ja": "ja@example.com", "ok-jiny": "jiny@example.com"}.get(token),
+    )
     with TestClient(app) as c:
-        c.auth = ("u", "p")
+        c.headers["Authorization"] = "Bearer ok-ja"
         yield c
     app.dependency_overrides.clear()
     del app.state.db
@@ -48,11 +57,21 @@ def test_timeline_merges_labs_and_events(client):
 
 def test_data_endpoints_require_login(client):
     anon = TestClient(app)
-    assert anon.get("/labs").status_code == 401
-    assert anon.get("/timeline", auth=("u", "spatne")).status_code == 401
+    assert anon.get("/labs").status_code == 401                                          # bez tokenu
+    assert anon.get("/labs", headers={"Authorization": "Bearer spatny"}).status_code == 401  # neplatný token
     assert anon.get("/health").status_code == 200  # health check pro Render
 
 
-def test_refuses_when_password_unset(client):
-    app.dependency_overrides[get_settings] = lambda: Settings(app_password="")
-    assert TestClient(app).get("/labs", auth=("jakub", "")).status_code == 503
+def test_other_family_member_is_forbidden(client):
+    r = TestClient(app).get("/timeline", headers={"Authorization": "Bearer ok-jiny"})
+    assert r.status_code == 403
+
+
+def test_refuses_when_no_allowed_emails(client):
+    app.dependency_overrides[get_settings] = lambda: Settings(allowed_emails="")
+    assert client.get("/labs").status_code == 503
+
+
+def test_index_page_is_public_and_has_no_data(client):
+    r = TestClient(app).get("/")
+    assert r.status_code == 200 and "Zdravotní přehled" in r.text

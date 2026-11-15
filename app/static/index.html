@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Zdravotní přehled</title>
+<style>
+  :root { --bg:#f4f2ee; --text:#1c1c1e; --muted:#66656b; --line:#dedad2; --tile:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121214; --text:#ececef; --muted:#9b9aa2; --line:#2b2b30; --tile:#1c1c20; } }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px; }
+  h1 { font-size:1.6rem; margin:0 0 16px; }
+  .msg { color:var(--muted); }
+  ul { list-style:none; padding:0; }
+  li { background:var(--tile); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:8px; }
+  li small { color:var(--muted); display:block; }
+  .out { color:#b3261e; font-weight:600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🫀 Zdravotní přehled</h1>
+  <p class="msg" id="stav">Načítám…</p>
+  <ul id="osa"></ul>
+</main>
+<script>
+  // Přihlášení předá Rozcestník v adrese: #sso=<token>. Uložíme do sessionStorage a z adresy smažeme.
+  const ROZCESTNIK = "https://jakubpechoucek-glitch.github.io/rozcestnik/?sso=zdravi";
+  const stav = document.getElementById("stav"), osa = document.getElementById("osa");
+  const m = /[#&]sso=([^&]+)/.exec(location.hash);
+  if (m) {
+    try { sessionStorage.setItem("token", decodeURIComponent(m[1])); } catch (e) {}
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  const prihlasit = (text) => { stav.innerHTML = `${text} <a href="${ROZCESTNIK}">Přihlásit přes Rozcestník</a>`; };
+
+  (async () => {
+    let token = null;
+    try { token = sessionStorage.getItem("token"); } catch (e) {}
+    if (!token) return prihlasit("Nejsi přihlášen.");
+    const r = await fetch("/timeline", { headers: { Authorization: "Bearer " + token } });
+    if (r.status === 401) return prihlasit("Přihlášení vypršelo.");
+    if (r.status === 403) return (stav.textContent = "Tento účet nemá přístup.");
+    if (!r.ok) return (stav.textContent = "Chyba " + r.status);
+    const data = await r.json();
+    stav.textContent = data.length ? "" : "Zatím žádné záznamy.";
+    for (const i of data) {
+      const li = document.createElement("li");
+      const hodnota = i.type === "lab" ? `${i.value} ${i.unit}` : "";
+      li.textContent = `${i.day} · ${i.title} ${hodnota}`;
+      if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = " ⚠ mimo rozsah"; li.append(o); }
+      osa.append(li);
+    }
+  })();
+</script>
+</body>
+</html>

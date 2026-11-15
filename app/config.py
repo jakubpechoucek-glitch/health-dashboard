@@ -10,9 +10,11 @@ class Settings(BaseSettings):
     garmin_client_secret: str = ""
     garmin_api_key: str = ""
 
-    # Přihlášení do aplikace (HTTP Basic přes HTTPS). Prázdné heslo = aplikace se odmítne spustit pro uživatele.
-    app_user: str = "jakub"
-    app_password: str = ""
+    # Přihlášení přes Google = stejný Supabase projekt jako Rozcestník (hodnoty jsou veřejné, jako v auth.js).
+    supabase_url: str = "https://unoefgbzymlwwehgzusf.supabase.co"
+    supabase_key: str = "sb_publishable_0slnWPDezyFgiOmUGDal4Q_B5ZGz7i_"
+    # E-maily, které smí do aplikace (čárkou oddělené). Zdravotní data jsou jen moje, ne celé rodiny.
+    allowed_emails: str = ""
     enable_docs: bool = False
 
 

@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI
+from fastapi.responses import FileResponse
 
 from . import garmin, records
 from .auth import require_auth
@@ -31,3 +34,9 @@ app.include_router(records.router, dependencies=[Depends(require_auth)])
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    # Stránka sama žádná data neobsahuje, ta se načítají přes API s tokenem.
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
