@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from . import garmin, records
+from .auth import require_auth
 from .config import get_settings
 from .db import connect
 
@@ -15,9 +16,16 @@ async def lifespan(app: FastAPI):
     app.state.db.close()
 
 
-app = FastAPI(title="Zdravotní přehled", lifespan=lifespan)
+_docs = get_settings().enable_docs
+app = FastAPI(
+    title="Zdravotní přehled",
+    lifespan=lifespan,
+    docs_url="/docs" if _docs else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if _docs else None,
+)
 app.include_router(garmin.router)
-app.include_router(records.router)
+app.include_router(records.router, dependencies=[Depends(require_auth)])
 
 
 @app.get("/health")

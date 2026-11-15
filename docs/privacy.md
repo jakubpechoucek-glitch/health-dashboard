@@ -4,7 +4,8 @@ Data jsou citlivá (zdraví, genetika) a po úniku nejdou vzít zpět.
 
 ## Pravidla
 
-- **Lokálně.** Aplikace i databáze běží na vlastním stroji, uvnitř `127.0.0.1`.
+- **Přihlášení vždy.** Každý požadavek na data vyžaduje heslo (`APP_PASSWORD`). Při jeho absenci aplikace nic nevydá.
+- **Hosting:** aktuálně Render (viz [deploy-render.md](deploy-render.md)). Data tak leží na cizím serveru; lokální běh zůstává možnou alternativou.
 - **Do repa nikdy:** `data/`, `.env`, `*.db`, `*.fit`, `*.pdf`. Chrání `.gitignore`,
   pre-commit hook `no-health-data` a `gitleaks`.
 - **Veřejně je jen webhook** a jen přes tunel, který propouští jedinou cestu. Token v URL je

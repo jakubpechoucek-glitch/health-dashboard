@@ -1,8 +1,7 @@
 # Zdravotní přehled
 
 Osobní webová aplikace, která na jedné časové ose spojuje data z Garminu, krevní rozbory,
-lékařská vyšetření (např. kolonoskopii) a genetiku. **Jen pro jednoho uživatele, běží
-lokálně.** Nejde o zdravotnický prostředek a nedává diagnózy ani doporučení.
+lékařská vyšetření (např. kolonoskopii) a genetiku. **Jen pro jednoho uživatele**, chráněné přihlášením (`APP_USER` / `APP_PASSWORD`). Nejde o zdravotnický prostředek a nedává diagnózy ani doporučení.
 
 ## Stack
 
@@ -36,6 +35,7 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 - [Architektura a datový model](docs/architecture.md)
 - [Garmin Health API](docs/garmin.md)
 - [Soukromí a bezpečnost](docs/privacy.md)
+- [Nasazení na Render](docs/deploy-render.md)
 - [Plán](docs/roadmap.md)
 
 ## Pravidla

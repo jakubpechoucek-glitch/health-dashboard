@@ -1,4 +1,22 @@
-# Garmin Health API
+# Garmin
+
+> **Aktualizace:** místo Health API (push, schvalování firmou) používáme **Garmin Personal API**
+> s osobním API klíčem. Data si aplikace stahuje sama (pull), webhook níže tak nejspíš
+> nebude potřeba. Postup a endpointy se doplní po ověření v dokumentaci portálu.
+
+## Personal API: získání tokenu
+
+```bash
+curl -s -X POST 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token' \
+  -H "Authorization: ApiKey $GARMIN_API_KEY"
+```
+
+API klíč chovat jako heslo (`.env`, na Renderu proměnná prostředí `GARMIN_API_KEY`). Platnost
+tokenu a seznam endpointů s daty je třeba doplnit z dokumentace.
+
+---
+
+# Původní návrh: Health API (push)
 
 Garmin Health API funguje jako **push**: po autorizaci uživatele posílá Garmin souhrny
 (`dailies`, `sleeps`, `hrv`, `stressDetails`, `activities`…) na tvoje URL. Naše URL je

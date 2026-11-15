@@ -9,8 +9,9 @@ from app.main import app
 @pytest.fixture
 def client():
     app.state.db = connect(":memory:")
-    app.dependency_overrides[get_settings] = lambda: Settings(garmin_webhook_token="tajne")
+    app.dependency_overrides[get_settings] = lambda: Settings(garmin_webhook_token="tajne", app_user="u", app_password="p")
     with TestClient(app) as c:
+        c.auth = ("u", "p")
         yield c
     app.dependency_overrides.clear()
     del app.state.db
@@ -43,3 +44,15 @@ def test_timeline_merges_labs_and_events(client):
     tl = client.get("/timeline").json()
     assert [i["title"] for i in tl] == ["Kolonoskopie", "Ferritin"]
     assert tl[1]["out_of_range"] is True
+
+
+def test_data_endpoints_require_login(client):
+    anon = TestClient(app)
+    assert anon.get("/labs").status_code == 401
+    assert anon.get("/timeline", auth=("u", "spatne")).status_code == 401
+    assert anon.get("/health").status_code == 200  # health check pro Render
+
+
+def test_refuses_when_password_unset(client):
+    app.dependency_overrides[get_settings] = lambda: Settings(app_password="")
+    assert TestClient(app).get("/labs", auth=("jakub", "")).status_code == 503

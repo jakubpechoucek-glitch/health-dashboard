@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: health-dashboard
+    runtime: docker
+    plan: starter            # perzistentní disk není na free plánu
+    region: frankfurt
+    healthCheckPath: /health
+    numInstances: 1          # SQLite = právě jedna instance
+    disk:
+      name: health-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: HEALTH_DB_PATH
+        value: /data/health.db
+      - key: APP_USER
+        value: jakub
+      - key: APP_PASSWORD
+        sync: false          # zadáš ručně v Renderu, nikdy do gitu
+      - key: GARMIN_API_KEY
+        sync: false
