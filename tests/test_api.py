@@ -367,3 +367,13 @@ def test_seed_ignores_empty_and_broken_input_without_crashing(caplog):
         assert "error" in seed.apply_seed(db, bad)
     assert db.execute("SELECT COUNT(*) FROM lab_result").fetchone()[0] == 0
     assert "Urea" not in caplog.text                                       # obsah se nikdy neloguje
+
+
+def test_seed_accepts_zlib_compressed_payload_and_rejects_corruption():
+    import zlib
+    raw = base64.b64decode(_seed_payload())
+    packed = base64.b64encode(zlib.compress(raw, 9)).decode()
+    db = connect(":memory:")
+    assert seed.apply_seed(db, packed)["labs_inserted"] == 2
+    broken = packed[:40] + ("A" if packed[40] != "A" else "B") + packed[41:]          # jeden změněný znak
+    assert "error" in seed.apply_seed(connect(":memory:"), broken)

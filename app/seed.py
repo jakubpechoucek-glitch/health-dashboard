@@ -1,5 +1,6 @@
 """Jednorázové naplnění databáze z proměnné prostředí SEED_JSON_B64 (JSON v base64).
 
+Hodnota je JSON v base64, případně nejdřív zkomprimovaný zlibem (kratší, a poškození se pozná).
 Slouží k dodání dat, která nemají být v gitu (rozbory, vyšetření). Import je idempotentní: co už v databázi je, se
 přeskočí, takže proměnná může zůstat i po restartu. Po úspěšném importu ji ale smaž (data zůstanou v databázi).
 Do logu se píšou jen počty, nikdy obsah.
@@ -9,6 +10,7 @@ import binascii
 import json
 import logging
 import sqlite3
+import zlib
 
 from pydantic import ValidationError
 
@@ -22,10 +24,13 @@ def apply_seed(db: sqlite3.Connection, b64: str) -> dict:
     if not b64.strip():
         return {}
     try:
-        data = json.loads(base64.b64decode(b64, validate=True))
+        raw = base64.b64decode(b64, validate=True)
+        if raw[:1] == b"x":                      # zlib (kontrolní součet odhalí poškozený přepis)
+            raw = zlib.decompress(raw)
+        data = json.loads(raw)
         labs = [LabIn(**i) for i in data.get("labs", [])]
         events = [EventIn(**i) for i in data.get("events", [])]
-    except (binascii.Error, ValueError, TypeError, ValidationError) as e:
+    except (binascii.Error, ValueError, TypeError, ValidationError, zlib.error) as e:
         log.error("seed: neplatná data (%s), nic se neimportovalo", type(e).__name__)
         return {"error": type(e).__name__}
     labs_in, labs_skip = save_labs(db, labs)
