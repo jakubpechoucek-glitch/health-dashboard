@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     # E-maily, které smí do aplikace (čárkou oddělené). Zdravotní data jsou jen moje, ne celé rodiny.
     allowed_emails: str = ""
     enable_docs: bool = False
+    seed_json_b64: str = ""   # jednorázový import dat, viz app/seed.py
 
 
 def get_settings() -> Settings:

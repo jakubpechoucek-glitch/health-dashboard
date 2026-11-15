@@ -336,3 +336,34 @@ def test_backup_is_a_complete_sqlite_copy(client, tmp_path):
     import sqlite3
     assert sqlite3.connect(copy).execute("SELECT analyte, value FROM lab_result").fetchall() == [("Urea", 5.0)]
     assert TestClient(app).get("/backup").status_code == 401
+
+
+# ---------- jednorázový import dat z proměnné prostředí ----------
+
+import base64, json as _json
+from app import seed
+
+
+def _seed_payload():
+    data = {"labs": [{"taken_on": "2026-01-01", "lab": "x", "analyte": "Urea", "value": 5.0, "unit": "mmol/L", "ref_low": 2.8, "ref_high": 8.1},
+                     {"taken_on": "2026-01-01", "lab": "x", "analyte": "Glukóza (moč)", "value_text": "neg"}],
+            "events": [{"day": "2026-07-13", "kind": "exam", "title": "Kolonoskopie", "note": "n"}]}
+    return base64.b64encode(_json.dumps(data).encode()).decode()
+
+
+def test_seed_imports_once_and_is_idempotent():
+    db = connect(":memory:")
+    first = seed.apply_seed(db, _seed_payload())
+    assert first == {"labs_inserted": 2, "labs_skipped": 0, "events_inserted": 1, "events_skipped": 0}
+    again = seed.apply_seed(db, _seed_payload())                         # restart služby s ponechanou proměnnou
+    assert again == {"labs_inserted": 0, "labs_skipped": 2, "events_inserted": 0, "events_skipped": 1}
+    assert db.execute("SELECT COUNT(*) FROM lab_result").fetchone()[0] == 2
+
+
+def test_seed_ignores_empty_and_broken_input_without_crashing(caplog):
+    db = connect(":memory:")
+    assert seed.apply_seed(db, "") == {}
+    for bad in ("není base64!!", base64.b64encode(b"not json").decode(), base64.b64encode(b'{"labs":[{"x":1}]}').decode()):
+        assert "error" in seed.apply_seed(db, bad)
+    assert db.execute("SELECT COUNT(*) FROM lab_result").fetchone()[0] == 0
+    assert "Urea" not in caplog.text                                       # obsah se nikdy neloguje

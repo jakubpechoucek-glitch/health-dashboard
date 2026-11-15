@@ -9,12 +9,14 @@ from . import garmin, labs, records, status
 from .auth import require_auth
 from .config import get_settings
 from .db import connect
+from .seed import apply_seed
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not hasattr(app.state, "db"):
         app.state.db = connect(get_settings().health_db_path)
+        apply_seed(app.state.db, get_settings().seed_json_b64)
     yield
     app.state.db.close()
 

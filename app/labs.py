@@ -128,12 +128,8 @@ async def preview(request: Request):
     return parsed
 
 
-@router.post("/bulk", status_code=201)
-def bulk(payload: dict, db: sqlite3.Connection = Depends(get_db)):
-    """Uloží potvrzené výsledky. Již uložené (stejný den, analyt a hodnota) přeskočí."""
-    items = [LabIn(**i) for i in payload.get("items", [])]
-    if not items or len(items) > 500:
-        raise HTTPException(status_code=400, detail="Očekávám 1 až 500 položek")
+def save_labs(db: sqlite3.Connection, items: list[LabIn]) -> tuple[int, int]:
+    """Uloží výsledky, již uložené (stejný den, analyt a hodnota) přeskočí. Vrací (uloženo, přeskočeno)."""
     inserted = skipped = 0
     for it in items:
         dup = db.execute(
@@ -151,4 +147,14 @@ def bulk(payload: dict, db: sqlite3.Connection = Depends(get_db)):
         )
         inserted += 1
     db.commit()
+    return inserted, skipped
+
+
+@router.post("/bulk", status_code=201)
+def bulk(payload: dict, db: sqlite3.Connection = Depends(get_db)):
+    """Uloží potvrzené výsledky. Již uložené (stejný den, analyt a hodnota) přeskočí."""
+    items = [LabIn(**i) for i in payload.get("items", [])]
+    if not items or len(items) > 500:
+        raise HTTPException(status_code=400, detail="Očekávám 1 až 500 položek")
+    inserted, skipped = save_labs(db, items)
     return {"inserted": inserted, "skipped": skipped}

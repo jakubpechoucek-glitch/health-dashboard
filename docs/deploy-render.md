@@ -27,6 +27,13 @@ data leží na cizím serveru a aplikace je dostupná z internetu, proto platí 
   všechna zdravotní data, ukládej ho jen na šifrovaný disk nebo do správce hesel s přílohami.
 - Obnova ze zálohy se zatím dělá ručně (nahrání souboru na disk přes SSH služby). Nemá tlačítko, aby šlo omylem přepsat data.
 
+## Jednorázový import dat bez gitu
+
+Data, která nemají být v repu (rozbory, vyšetření), jde do databáze dostat přes proměnnou prostředí `SEED_JSON_B64`
+(JSON `{"labs": [...], "events": [...]}` v base64, tvary položek jako u `POST /labs` a `POST /events`).
+Aplikace ji při startu naimportuje (`app/seed.py`), je to **idempotentní** (existující záznamy přeskočí) a do logu zapíše jen počty.
+Po importu proměnnou vyprázdni, data zůstanou v databázi.
+
 ## Omezení
 
 - SQLite jen s jednou instancí. Škálování tu není potřeba.
