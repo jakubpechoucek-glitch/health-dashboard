@@ -164,6 +164,12 @@
     <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
   </section>
 
+  <section id="uloziste" hidden>
+    <h2>Úložiště dat</h2>
+    <p class="msg" id="uloziste-text"></p>
+    <div class="bar"><button id="zaloha">Stáhnout zálohu databáze</button><span class="msg" id="zaloha-stav" role="status"></span></div>
+  </section>
+
   <section id="osa-sekce" hidden>
     <h2>Časová osa (vyšetření a rozbory)</h2>
     <form class="forma" id="forma-udalost">
@@ -553,6 +559,30 @@
     for (const g of GRAFY) q.append("metric", g.klic);
     return api("/metrics?" + q);
   };
+  // ---------- úložiště: důkaz, že data zůstávají, a záloha ----------
+  function vykresliStav(st) {
+    $("uloziste").hidden = false;
+    const kb = st.db_bytes == null ? "" : ` · velikost ${st.db_bytes > 1048576 ? (st.db_bytes / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.ceil(st.db_bytes / 1024) + " kB"}`;
+    const garmin = st.metric_days ? `${st.metric_days} dní (${dlouzeDatum(st.first_metric_day)} – ${dlouzeDatum(st.last_metric_day)})` : "zatím nic";
+    const t = $("uloziste-text");
+    t.textContent = (st.persistent_disk ? "✓ Data jsou uložená na trvalém disku a po novém nasazení aplikace zůstanou. " : "⚠ Databáze neleží na samostatném disku, po novém nasazení by se data smazala. ")
+      + `Rozbory: ${st.labs} hodnot z ${st.lab_days} odběrů · Garmin: ${garmin} · události: ${st.events}${kb}.`;
+    t.className = "msg " + (st.persistent_disk ? "" : "err");
+  }
+  $("zaloha").addEventListener("click", async () => {
+    const tl = $("zaloha"), z = $("zaloha-stav"); tl.disabled = true; z.textContent = "Připravuji zálohu…"; z.className = "msg";
+    try {
+      if (!token() || vyprsel()) throw new Chyba(401, "Přihlášení vypršelo.");
+      const r = await fetch("/backup", { headers: { Authorization: "Bearer " + token() } });
+      if (!r.ok) throw new Chyba(r.status, r.status === 401 ? "Přihlášení vypršelo." : "Chyba " + r.status);
+      const blob = await r.blob(), nazev = (/filename="?([^";]+)/.exec(r.headers.get("content-disposition") || "") || [])[1] || "health.db";
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nazev; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      z.textContent = `Záloha ${nazev} stažena. Obsahuje všechna tvoje zdravotní data, ulož ji bezpečně.`; z.className = "msg ok";
+    } catch (e) { z.textContent = e.message; z.className = "msg err"; if (e.status === 401) bannerPrihlaseni(); }
+    finally { tl.disabled = false; }
+  });
+
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
@@ -560,6 +590,7 @@
       stav.metriky = metriky; stav.osa = osa;
       $("stav").textContent = ""; $("ovladani").hidden = false; $("hist-radek").hidden = false;
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
+      api("/status").then(vykresliStav).catch(() => {});
     } finally { $("grafy").classList.remove("nacitam"); }
   }
 

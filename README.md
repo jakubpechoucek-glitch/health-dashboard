@@ -31,6 +31,9 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 | POST/GET, DELETE `/events/{id}` | `/events` | události (vyšetření, výsledek genetiky, změna léků) |
 | GET | `/timeline` | události + rozbory seřazené v čase, s příznakem mimo referenční rozsah |
 
+| GET | `/status` | stav úložiště: zda je databáze na trvalém disku, počty záznamů |
+| GET | `/backup` | konzistentní kopie celé databáze (SQLite) ke stažení |
+
 ## Dokumentace
 
 - [Architektura a datový model](docs/architecture.md)

@@ -313,3 +313,26 @@ def test_metrics_accepts_several_metrics(client, garmin_calls):
     client.post("/garmin/sync", params={"days": 3})
     got = {m["metric"] for m in client.get("/metrics", params=[("metric", "steps"), ("metric", "sleep_score")]).json()}
     assert got == {"steps", "sleep_score"}
+
+
+# ---------- stav úložiště a záloha ----------
+
+def test_status_counts_and_requires_login(client, garmin_calls):
+    client.post("/events", json={"day": "2026-07-13", "kind": "exam", "title": "Kolonoskopie"})
+    client.post("/labs", json={"taken_on": "2026-01-01", "analyte": "Urea", "value": 5.0})
+    client.post("/garmin/sync", params={"days": 3})
+    st = client.get("/status").json()
+    assert (st["events"], st["labs"], st["lab_days"]) == (1, 1, 1)
+    assert st["metric_values"] > 0 and st["last_metric_day"] and isinstance(st["persistent_disk"], bool)
+    assert TestClient(app).get("/status").status_code == 401
+
+
+def test_backup_is_a_complete_sqlite_copy(client, tmp_path):
+    client.post("/labs", json={"taken_on": "2026-01-01", "analyte": "Urea", "value": 5.0})
+    r = client.get("/backup")
+    assert r.status_code == 200 and "health-" in r.headers["content-disposition"]
+    assert r.content.startswith(b"SQLite format 3\x00")
+    copy = tmp_path / "copy.db"; copy.write_bytes(r.content)
+    import sqlite3
+    assert sqlite3.connect(copy).execute("SELECT analyte, value FROM lab_result").fetchall() == [("Urea", 5.0)]
+    assert TestClient(app).get("/backup").status_code == 401

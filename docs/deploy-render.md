@@ -18,6 +18,15 @@ data leží na cizím serveru a aplikace je dostupná z internetu, proto platí 
 - Surové soubory z genetiky a PDF s rozbory. V databázi jen hodnoty a závěry.
 - Zálohy dělat pravidelně stažením šifrovaného exportu databáze (viz roadmap), ne spoléhat jen na disk.
 
+## Trvalost dat a zálohy
+
+- Databáze je na připojeném disku (`/data`). Nové nasazení aplikace ji **nemaže**, mění se jen kód. Smazala by se jen při odstranění disku
+  nebo služby. Aplikace to ukazuje v sekci **Úložiště dat** (✓ trvalý disk / ⚠ upozornění).
+- Render navíc dělá **automatické denní snapshoty disku** (uchovávají se několik dní, viz nastavení disku v Renderu).
+- Vlastní záloha: tlačítko **Stáhnout zálohu databáze** (`GET /backup`) stáhne konzistentní kopii celé databáze. Soubor obsahuje
+  všechna zdravotní data, ukládej ho jen na šifrovaný disk nebo do správce hesel s přílohami.
+- Obnova ze zálohy se zatím dělá ručně (nahrání souboru na disk přes SSH služby). Nemá tlačítko, aby šlo omylem přepsat data.
+
 ## Omezení
 
 - SQLite jen s jednou instancí. Škálování tu není potřeba.
