@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS lab_result (
     CHECK (value IS NOT NULL OR value_text != '')
 );
 
+-- Jak se má u ukazatele hodnotit změna (nižší / vyšší je lepší, v rozmezí, nehodnotit); výchozí hodnoty jsou v UI
+CREATE TABLE IF NOT EXISTS lab_setting (
+    analyte TEXT PRIMARY KEY,
+    mode TEXT NOT NULL CHECK (mode IN ('rozmezi', 'nizsi', 'vyssi', 'nehodnotit'))
+);
+
 -- Události na časové ose: kolonoskopie, výsledek genetiky, změna léků...
 CREATE TABLE IF NOT EXISTS health_event (
     id INTEGER PRIMARY KEY,

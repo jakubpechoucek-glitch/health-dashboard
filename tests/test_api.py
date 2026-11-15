@@ -377,3 +377,14 @@ def test_seed_accepts_zlib_compressed_payload_and_rejects_corruption():
     assert seed.apply_seed(db, packed)["labs_inserted"] == 2
     broken = packed[:40] + ("A" if packed[40] != "A" else "B") + packed[41:]          # jeden změněný znak
     assert "error" in seed.apply_seed(connect(":memory:"), broken)
+
+
+def test_lab_interpretation_settings(client):
+    assert client.get("/labs/settings").json() == {}
+    assert client.put("/labs/settings", json={"analyte": "LDL cholesterol", "mode": "nizsi"}).status_code == 200
+    client.put("/labs/settings", json={"analyte": "Lp(a)", "mode": "nizsi"})
+    client.put("/labs/settings", json={"analyte": "LDL cholesterol", "mode": "rozmezi"})        # přepsání
+    assert client.get("/labs/settings").json() == {"LDL cholesterol": "rozmezi", "Lp(a)": "nizsi"}
+    assert client.put("/labs/settings", json={"analyte": "X", "mode": "hodne"}).status_code == 422   # neznámý režim
+    assert TestClient(app).get("/labs/settings").status_code == 401
+    assert TestClient(app).put("/labs/settings", json={"analyte": "X", "mode": "nizsi"}).status_code == 401

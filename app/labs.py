@@ -14,7 +14,10 @@ import subprocess
 import tempfile
 from datetime import date
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from .records import LabIn, get_db
 
@@ -158,3 +161,22 @@ def bulk(payload: dict, db: sqlite3.Connection = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Očekávám 1 až 500 položek")
     inserted, skipped = save_labs(db, items)
     return {"inserted": inserted, "skipped": skipped}
+
+
+class SettingIn(BaseModel):
+    analyte: str = Field(min_length=1, max_length=200)
+    mode: Literal["rozmezi", "nizsi", "vyssi", "nehodnotit"]
+
+
+@router.get("/settings")
+def get_settings_(db: sqlite3.Connection = Depends(get_db)):
+    """Vlastní interpretace ukazatelů (jen odchylky od výchozích)."""
+    return {r["analyte"]: r["mode"] for r in db.execute("SELECT analyte, mode FROM lab_setting")}
+
+
+@router.put("/settings")
+def put_setting(item: SettingIn, db: sqlite3.Connection = Depends(get_db)):
+    db.execute("INSERT INTO lab_setting (analyte, mode) VALUES (?, ?) "
+               "ON CONFLICT(analyte) DO UPDATE SET mode = excluded.mode", (item.analyte, item.mode))
+    db.commit()
+    return {"analyte": item.analyte, "mode": item.mode}

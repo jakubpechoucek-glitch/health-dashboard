@@ -8,7 +8,8 @@
 - [x] UI: grafy metrik z Garminu (kroky, klidový tep, spánek, skóre spánku, HRV, stres, Body Battery), filtr 14 / 30 / 90 dní / rok, tabulka
 - [x] UI: události a odběry vyznačené v grafech (▲ na ose, název v tooltipu); formulář pro přidání a mazání událostí
 - [x] Import krevních rozborů z PDF (extrakce + náhled a potvrzení), tabulka rozborů po odběrech
-- [ ] Grafy vývoje jednotlivých analytů s referenčním pásmem (až bude víc odběrů)
+- [x] Záložka Krevní rozbory: pruh referenčního rozmezí s oběma výsledky, směr změny a hodnocení podle interpretace ukazatele
+- [ ] Vývoj ukazatele v čase jako čára přes víc než dva odběry (až jich bude víc)
 - [ ] Slovník analytů a referenčních rozsahů
 - [ ] Genetika: formát výsledků, strukturovaný záznam, odkaz na zdrojový soubor
 - [ ] Šifrované zálohy

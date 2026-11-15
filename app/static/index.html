@@ -95,6 +95,45 @@
   .zpet:hover { color:var(--text); text-decoration:underline; }
   .banner { border:1px solid var(--err); color:var(--err); border-radius:12px; padding:10px 14px; margin:10px 0; background:var(--surface-1); }
   .banner a { font-weight:700; }
+
+  /* záložky */
+  .zalozky { display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--line); margin:14px 0 16px; }
+  .zalozky [role="tab"] { border:0; border-radius:10px 10px 0 0; background:transparent; padding:10px 16px; font-weight:600; color:var(--text-secondary); margin-bottom:-1px; border-bottom:3px solid transparent; }
+  .zalozky [role="tab"][aria-selected="true"] { color:var(--text); border-bottom-color:var(--series-1); }
+  .zalozky [role="tab"]:hover { color:var(--text); }
+  [role="tabpanel"]:focus-visible { outline:2px solid var(--series-1); outline-offset:4px; border-radius:6px; }
+
+  /* krevní rozbory: dlaždice-filtry */
+  .kpi { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; margin:6px 0 14px; }
+  @media (max-width:640px) { .kpi { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+  .kpi-dlazdice { display:flex; flex-direction:column; align-items:flex-start; gap:0; text-align:left; border-radius:14px; padding:10px 14px; background:var(--surface-1); }
+  .kpi-dlazdice[aria-pressed="true"] { border-color:var(--text); box-shadow:inset 0 0 0 1px var(--text); }
+  .kpi-cislo { font-size:1.7rem; font-weight:600; line-height:1.2; }
+  .kpi-text { font-size:.85rem; color:var(--text-secondary); }
+  .kpi-mimo .kpi-cislo { color:var(--err); } .kpi-lepsi .kpi-cislo { color:var(--ok); } .kpi-horsi .kpi-cislo { color:var(--err); }
+  .legenda .lg { display:inline-block; vertical-align:middle; margin:0 2px; }
+  .lg-pas { width:22px; height:10px; border-radius:5px; background:color-mix(in srgb, var(--series-1) 17%, transparent); border:1px solid color-mix(in srgb, var(--series-1) 40%, transparent); }
+  .lg-star { width:10px; height:10px; border-radius:50%; border:2px solid var(--series-1); background:var(--surface-1); }
+  .lg-nove { width:10px; height:10px; border-radius:50%; background:var(--series-1); }
+  .uk-skupina h3 { font-size:1rem; margin:20px 0 8px; }
+  .uk-karta { background:var(--surface-1); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .uk { display:grid; grid-template-columns:minmax(150px, 1.1fr) minmax(220px, 2fr) minmax(160px, 1.05fr); gap:8px 18px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--line); }
+  .uk:last-child { border-bottom:0; }
+  @media (max-width:760px) { .uk { grid-template-columns:1fr; gap:4px; } }
+  .uk-nazev .nazev-text { font-weight:600; }
+  .uk-nazev small { color:var(--text-secondary); font-weight:400; }
+  .uk-mod { margin-top:4px; padding:3px 10px; font-size:.78rem; color:var(--text-secondary); max-width:100%; }
+  .uk-graf svg { display:block; width:100%; height:auto; }
+  .uk-graf svg text { fill:var(--text-muted); font:10.5px system-ui,sans-serif; }
+  .uk-text { font-size:1.05rem; }
+  .uk-zmena { font-size:.88rem; }
+  .uk-posun { font-weight:600; }
+  .verdikt { display:inline-block; margin-top:2px; padding:1px 10px; border-radius:999px; font-size:.82rem; font-weight:600; border:1px solid var(--line); color:var(--text-secondary); }
+  .v-lepsi { color:var(--ok); border-color:var(--ok); }
+  .v-horsi { color:var(--err); border-color:var(--err); }
+  .v-zmena { color:var(--text); border-color:#fab219; }
+  .uk-zona { color:var(--text-secondary); font-size:.8rem; margin-top:2px; }
+  .uk-zona.mimo { color:var(--err); font-weight:600; }
   .legenda { color:var(--text-secondary); font-size:.85rem; margin:0 0 10px; }
   .osa-radek { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
   .osa-radek .poznamka { display:block; color:var(--text-secondary); font-size:.88rem; margin-top:2px; white-space:pre-wrap; }
@@ -114,6 +153,13 @@
   <div class="banner" id="banner" role="alert" hidden></div>
   <p class="msg" id="stav">Načítám…</p>
 
+  <div class="zalozky" role="tablist" aria-label="Sekce stránky">
+    <button type="button" role="tab" id="tab-garmin" aria-controls="panel-garmin" aria-selected="true">Garmin</button>
+    <button type="button" role="tab" id="tab-rozbory" aria-controls="panel-rozbory" aria-selected="false" tabindex="-1">Krevní rozbory</button>
+    <button type="button" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Události a data</button>
+  </div>
+
+  <div role="tabpanel" id="panel-garmin" aria-labelledby="tab-garmin" tabindex="0">
   <div class="bar" id="ovladani" hidden>
     <button class="primary" id="sync">⟳ Synchronizovat Garmin</button>
     <label>za posledních
@@ -148,8 +194,10 @@
     <div class="tablewrap" id="tabulka" hidden><table id="tab"></table></div>
   </section>
 
-  <section id="rozbory-sekce" hidden>
-    <h2>Krevní rozbory</h2>
+  </div>
+
+  <div role="tabpanel" id="panel-rozbory" aria-labelledby="tab-rozbory" tabindex="0" hidden>
+    <section id="rozbory-sekce" hidden>
     <div class="bar">
       <label class="nahrat"><input type="file" id="pdf" accept="application/pdf"><span>Nahrát PDF s výsledky</span></label>
       <span class="msg" id="pdf-stav" role="status"></span>
@@ -160,16 +208,27 @@
       <div class="tablewrap"><table id="nahled-tab"></table></div>
       <div class="bar"><button class="primary" id="nahled-ulozit">Uložit</button><button id="nahled-zrusit">Zrušit</button></div>
     </div>
-    <div class="tablewrap" id="rozbory-wrap" hidden><table id="rozbory-tab"></table></div>
-    <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
-  </section>
+      <div id="rozbory-obsah" hidden>
+        <div class="kpi" id="rozbory-kpi" role="group" aria-label="Filtr ukazatelů"></div>
+        <div class="filtr" id="rozbory-filtr">
+          <label>Porovnat <select id="cmp-novy" aria-label="Novější odběr"></select></label>
+          <label>s <select id="cmp-stary" aria-label="Starší odběr"></select></label>
+          <button type="button" class="vpravo" id="rozbory-prepni" aria-pressed="false">Zobrazit tabulku</button>
+        </div>
+        <p class="legenda" id="rozbory-legenda">
+          <span class="lg lg-pas"></span> referenční rozmezí laboratoře ·
+          <span class="lg lg-star"></span> starší výsledek ·
+          <span class="lg lg-nove"></span> novější výsledek (červeně, je-li mimo rozmezí) ·
+          hodnocení změny závisí na tom, jak se daný ukazatel interpretuje (nastavíš v řádku). Je to orientační pomůcka, ne lékařský závěr.
+        </p>
+        <div id="rozbory-prehled"></div>
+        <div class="tablewrap" id="rozbory-wrap" hidden><table id="rozbory-tab"></table></div>
+      </div>
+      <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
+    </section>
+  </div>
 
-  <section id="uloziste" hidden>
-    <h2>Úložiště dat</h2>
-    <p class="msg" id="uloziste-text"></p>
-    <div class="bar"><button id="zaloha">Stáhnout zálohu databáze</button><span class="msg" id="zaloha-stav" role="status"></span></div>
-  </section>
-
+  <div role="tabpanel" id="panel-data" aria-labelledby="tab-data" tabindex="0" hidden>
   <section id="osa-sekce" hidden>
     <h2>Časová osa (vyšetření a rozbory)</h2>
     <form class="forma" id="forma-udalost">
@@ -185,6 +244,13 @@
     <ul id="osa"></ul>
     <p class="msg" id="osa-prazdna" hidden>Zatím žádná vyšetření ani rozbory.</p>
   </section>
+  <section id="uloziste" hidden>
+    <h2>Úložiště dat</h2>
+    <p class="msg" id="uloziste-text"></p>
+    <div class="bar"><button id="zaloha">Stáhnout zálohu databáze</button><span class="msg" id="zaloha-stav" role="status"></span></div>
+  </section>
+
+  </div>
 </main>
 <script>
   // Přihlášení předá Rozcestník v adrese: #sso=<token>. Uložíme do sessionStorage a z adresy smažeme.
@@ -259,7 +325,7 @@
   const osaX = (den) => (stav.rozsah > 300 ? new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { month: "numeric", year: "numeric" }) : kratce(den));
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
-  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false };
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse" };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -480,40 +546,250 @@
     finally { tl.disabled = false; }
   });
 
-  // ---------- krevní rozbory ----------
+  // ---------- krevní rozbory: přehled všech ukazatelů ----------
+  const cisloLab = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });        // bez zbytečných nul: 123, 5,4, 0,995
   const mimoRozsah = (r) => r.value != null && ((r.ref_low != null && r.value < r.ref_low) || (r.ref_high != null && r.value > r.ref_high));
   const smer = (r) => (r.ref_high != null && r.value > r.ref_high ? " ↑" : " ↓");        // šipka, aby barva nebyla jediný signál
   const refText = (r) => (r.ref_low == null && r.ref_high == null ? "" : `${r.ref_low != null ? cisloLab(r.ref_low) : "…"} – ${r.ref_high != null ? cisloLab(r.ref_high) : "…"}`);
-  const cisloLab = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });        // bez zbytečných nul: 123, 5,4, 0,995
   const hodnotaText = (r) => (r.value != null ? cisloLab(r.value) : r.value_text);
+  const dlouzeDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
+
+  // Seskupení a interpretace. Každý ukazatel se čte jinak: u cholesterolu je lepší méně, u HDL více, u většiny je cílem rozmezí.
+  const SKUPINY = [
+    ["Moč", /\(moč/],
+    ["Ledviny", /^(Urea|Kreatinin|GF CKD-EPI|Hodnocení CKD dle eGFR|Kyselina močová)$/],
+    ["Elektrolyty", /^(Na - natrium|K - kalium|Cl - chloridy)$/],
+    ["Játra a bílkoviny", /^(Bilirubin celk\.|ALT|AST|GGT|ALP|FIB-4 index|Celk\.bílkovina)$/],
+    ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
+    ["Cukr", /^Glukóza$/],
+    ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW)\b/],
+    ["Prostata", /^PSA$/],
+  ];
+  const skupinaPro = (a) => (SKUPINY.find(([, re]) => re.test(a)) || ["Ostatní"])[0];
+  const MODY = { rozmezi: "v rozmezí je v pořádku", nizsi: "nižší je lepší", vyssi: "vyšší je lepší", nehodnotit: "nehodnotit změnu" };
+  const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index)$/.test(a) ? "nizsi"
+    : /^(HDL cholesterol|GF CKD-EPI)$/.test(a) ? "vyssi" : "rozmezi");
+  const modPro = (a) => stav.nastaveni[a] || vychoziMod(a);
+
+  const zona = (v, lo, hi) => (lo != null && v < lo ? -1 : hi != null && v > hi ? 1 : 0);          // -1 pod, 0 v rozmezí, 1 nad
+  const vzdalenost = (v, lo, hi) => (lo != null && v < lo ? lo - v : hi != null && v > hi ? v - hi : 0);
+
+  // Porovnání dvou výsledků jednoho ukazatele podle zvolené interpretace.
+  function posoudit(a, stare, nove) {
+    if (!nove) return { verdikt: "nic" };
+    if (!stare) return { verdikt: "nic", zona: nove.value != null ? zona(nove.value, nove.ref_low, nove.ref_high) : null };
+    if (nove.value == null || stare.value == null) {                          // kvalitativní: neg, +, G1
+      return { verdikt: hodnotaText(stare) === hodnotaText(nove) ? "stejne" : "zmena" };
+    }
+    if (stare.unit && nove.unit && stare.unit !== nove.unit) return { verdikt: "jednotky" };       // hodnoty v různých jednotkách nelze porovnat
+    const lo = nove.ref_low ?? stare.ref_low, hi = nove.ref_high ?? stare.ref_high, mod = modPro(a.nazev);
+    const d = nove.value - stare.value, sirka = lo != null && hi != null ? hi - lo : Math.abs(stare.value) || 1;
+    const zN = zona(nove.value, lo, hi), zS = zona(stare.value, lo, hi);
+    const r = { rozdil: d, procento: stare.value !== 0 ? (d / Math.abs(stare.value)) * 100 : null, smer: d > 0 ? "nahoru" : d < 0 ? "dolu" : "stejne", zona: zN, lo, hi };
+    if (Math.abs(d) <= 0.02 * sirka) { r.smer = "stejne"; r.verdikt = "stejne"; return r; }       // změna do 2 % rozsahu nepočítáme
+    if (mod === "nehodnotit") r.verdikt = "bez";
+    else if (mod === "nizsi") r.verdikt = d < 0 ? "lepsi" : "horsi";
+    else if (mod === "vyssi") r.verdikt = d > 0 ? "lepsi" : "horsi";
+    else if (zN === 0 && zS === 0) r.verdikt = "vrozmezi";                                           // oba výsledky v rozmezí: cíl splněn
+    else if (zN === 0) r.verdikt = "lepsi";                                                         // vrátil se do rozmezí
+    else if (zS === 0) r.verdikt = "horsi";                                                         // opustil rozmezí
+    else r.verdikt = vzdalenost(nove.value, lo, hi) < vzdalenost(stare.value, lo, hi) ? "lepsi" : "horsi";   // oba venku: blíž k rozmezí = lépe
+    return r;
+  }
+  const VERDIKT = { lepsi: ["✓", "zlepšení"], horsi: ["⚠", "zhoršení"], vrozmezi: ["✓", "v rozmezí"], stejne: ["=", "beze změny"], bez: ["–", "bez hodnocení"], zmena: ["⚠", "změna"], nic: ["•", "první výsledek"], jednotky: ["≠", "jiná jednotka v listech"] };
+
+  // Rozmezí jako pruh: kde leží výsledky vůči referenčním mezím a kam se hodnota posunula.
+  function kresliRozmezi(host, a, stare, nove, ostatni) {
+    const W = Math.max(200, host.clientWidth || 300), H = 46, m = 14, y = 25;
+    const ref = nove || stare, lo = ref.ref_low, hi = ref.ref_high;
+    const vse = [stare, nove, ...ostatni].filter((r) => r && r.value != null).map((r) => r.value);
+    let dmin = Math.min(...vse, lo ?? Infinity), dmax = Math.max(...vse, hi ?? -Infinity);
+    const pad = (dmax - dmin) * 0.12 || Math.abs(dmax) * 0.2 || 1;
+    const nezaporny = Math.min(...vse, lo ?? Infinity) >= 0;
+    dmin -= pad; dmax += pad; if (nezaporny) dmin = Math.max(0, dmin);
+    const X = (v) => m + ((v - dmin) / (dmax - dmin)) * (W - 2 * m);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: "img" });
+    const popis = [stare && stare.value != null ? `starší ${hodnotaText(stare)} (${dlouzeDatum(stare.taken_on)})` : "", nove && nove.value != null ? `novější ${hodnotaText(nove)} (${dlouzeDatum(nove.taken_on)})` : ""].filter(Boolean).join(", ");
+    svg.setAttribute("aria-label", `${a.nazev}: ${popis}${refText(ref) ? ", referenční rozmezí " + refText(ref) : ""}`);
+
+    svg.append(el("line", { x1: m, x2: W - m, y1: y, y2: y, stroke: "var(--grid)", "stroke-width": 1 }));
+    const bx1 = lo != null ? X(lo) : m, bx2 = hi != null ? X(hi) : W - m;                     // pruh referenčního rozmezí (otevřený, když chybí mez)
+    svg.append(el("rect", { x: bx1, y: y - 7, width: Math.max(2, bx2 - bx1), height: 14, rx: 7, fill: "var(--series-1)", "fill-opacity": 0.17, stroke: "var(--series-1)", "stroke-opacity": 0.4, "stroke-width": 1 }));
+    for (const [v, kot] of [[lo, "start"], [hi, "end"]]) if (v != null) {
+      const x = X(v), anchor = x < 22 ? "start" : x > W - 22 ? "end" : "middle";
+      svg.append(el("text", { x, y: H - 2, "text-anchor": anchor }, cisloLab(v)));
+    }
+    for (const o of ostatni) if (o && o.value != null) svg.append(el("circle", { cx: X(o.value), cy: y, r: 3, fill: "var(--text-muted)", "fill-opacity": 0.8 }, ""));
+
+    const body = [];
+    if (stare && stare.value != null) body.push({ r: stare, stary: true });
+    if (nove && nove.value != null) body.push({ r: nove, stary: false });
+    if (stare && stare.value != null && nove && nove.value != null && Math.abs(X(nove.value) - X(stare.value)) > 16) {     // spojnice se šipkou ve směru posunu
+      const xs = X(stare.value), xn = X(nove.value), d = Math.sign(xn - xs), tip = xn - d * 9;
+      svg.append(el("line", { x1: xs + d * 7, x2: tip - d * 1, y1: y, y2: y, stroke: "var(--text-secondary)", "stroke-width": 1.5 }));
+      svg.append(el("path", { d: `M${tip},${y} L${tip - d * 6},${y - 4} L${tip - d * 6},${y + 4} Z`, fill: "var(--text-secondary)" }));
+    }
+    for (const b of body) {
+      const x = X(b.r.value), venku = mimoRozsah(b.r);
+      const c = el("circle", { cx: x, cy: y, r: 6, "stroke-width": 2 });
+      if (b.stary) { c.setAttribute("fill", "var(--surface-1)"); c.setAttribute("stroke", "var(--series-1)"); }
+      else { c.setAttribute("fill", venku ? "var(--err)" : "var(--series-1)"); c.setAttribute("stroke", "var(--surface-1)"); }
+      c.append(el("title", {}, `${dlouzeDatum(b.r.taken_on)}: ${hodnotaText(b.r)}${b.r.unit ? " " + b.r.unit : ""}${venku ? " (mimo rozmezí)" : ""}`));
+      svg.append(c);
+    }
+    // popisky hodnot nad značkami (jen u obou porovnávaných výsledků, ne u každého bodu); u blízkých značek každý na svou stranu
+    const stX = stare && stare.value != null ? X(stare.value) : null, noX = nove && nove.value != null ? X(nove.value) : null;
+    const popisek = (r, x, kotva, tucne) => svg.append(el("text", { x, y: 11, "text-anchor": kotva, style: `font-weight:${tucne ? 700 : 400};fill:var(${tucne ? "--text" : "--text-secondary"})` }, hodnotaText(r)));
+    if (noX != null && stX != null && Math.abs(noX - stX) < 44) {
+      const nalevo = stX <= noX;
+      popisek(stare, stX + (nalevo ? -8 : 8), nalevo ? "end" : "start", false);
+      popisek(nove, noX + (nalevo ? 8 : -8), nalevo ? "start" : "end", true);
+    } else {
+      if (stX != null) popisek(stare, Math.min(W - 16, Math.max(16, stX)), "middle", false);
+      if (noX != null) popisek(nove, Math.min(W - 16, Math.max(16, noX)), "middle", true);
+    }
+    host.replaceChildren(svg);
+  }
+
+  function modelRozboru() {
+    const radky = stav.rozbory, mapa = new Map();
+    for (const r of radky) { if (!mapa.has(r.analyte)) mapa.set(r.analyte, { nazev: r.analyte, jednotka: r.unit, vysledky: [] }); const a = mapa.get(r.analyte); a.vysledky.push(r); if (r.unit) a.jednotka = r.unit; }
+    const out = [];
+    for (const a of mapa.values()) {
+      a.vysledky.sort((x, y) => (x.taken_on < y.taken_on ? -1 : 1));
+      a.nove = a.vysledky.find((r) => r.taken_on === stav.cmpNovy);
+      a.stare = stav.cmpStary ? a.vysledky.find((r) => r.taken_on === stav.cmpStary) : undefined;
+      a.ostatni = a.vysledky.filter((r) => r !== a.nove && r !== a.stare).slice(-4);
+      a.posudek = posoudit(a, a.stare, a.nove);
+      a.mimo = !!(a.nove && mimoRozsah(a.nove));
+      a.skupina = skupinaPro(a.nazev);
+      out.push(a);
+    }
+    return out;
+  }
+
+  function radekUkazatele(a) {
+    const row = document.createElement("div"); row.className = "uk"; row.dataset.a = a.nazev;
+    const hl = document.createElement("div"); hl.className = "uk-nazev";
+    const nz = document.createElement("div"); nz.className = "nazev-text"; nz.textContent = a.nazev;
+    if (a.jednotka) { const u = document.createElement("small"); u.textContent = " " + a.jednotka; nz.append(u); }
+    const sel = document.createElement("select"); sel.className = "uk-mod"; sel.dataset.a = a.nazev; sel.setAttribute("aria-label", `Interpretace ukazatele ${a.nazev}`);
+    for (const [k, t] of Object.entries(MODY)) { const o = document.createElement("option"); o.value = k; o.textContent = t; if (k === modPro(a.nazev)) o.selected = true; sel.append(o); }
+    sel.addEventListener("change", () => ulozMod(a.nazev, sel.value));
+    hl.append(nz, sel);
+
+    const graf = document.createElement("div"); graf.className = "uk-graf";
+    const ref = a.nove || a.stare;
+    if (ref && ref.value != null) { row.append(hl, graf); kresliRozmezi(graf, a, a.stare, a.nove, a.ostatni); }
+    else {                                                                         // kvalitativní výsledek: text místo pruhu
+      graf.className = "uk-graf uk-text";
+      graf.textContent = a.stare ? `${hodnotaText(a.stare)} → ${a.nove ? hodnotaText(a.nove) : "–"}` : (a.nove ? hodnotaText(a.nove) : "–");
+      row.append(hl, graf);
+    }
+
+    const zm = document.createElement("div"); zm.className = "uk-zmena"; const p = a.posudek;
+    if (p.rozdil != null && p.smer !== "stejne") {
+      const sh = document.createElement("div"); sh.className = "uk-posun";
+      const znak = p.rozdil > 0 ? "+" : "−";
+      sh.textContent = `${p.smer === "nahoru" ? "↑" : "↓"} ${znak}${cisloLab(Math.abs(p.rozdil))}${a.jednotka ? " " + a.jednotka : ""}` + (p.procento != null ? ` (${p.procento > 0 ? "+" : "−"}${Math.abs(p.procento) < 10 ? Math.abs(p.procento).toFixed(1).replace(".", ",") : Math.round(Math.abs(p.procento))} %)` : "");
+      zm.append(sh);
+    }
+    const [ikona, text] = VERDIKT[p.verdikt]; const chip = document.createElement("span"); chip.className = "verdikt v-" + p.verdikt; chip.textContent = `${ikona} ${text}`; zm.append(chip);
+    if (a.nove && a.nove.value != null) {
+      const z = document.createElement("div"); z.className = "uk-zona" + (a.mimo ? " mimo" : "");
+      const zn = zona(a.nove.value, a.nove.ref_low, a.nove.ref_high), rt = refText(a.nove);
+      z.textContent = (zn > 0 ? "↑ nad rozmezím" : zn < 0 ? "↓ pod rozmezím" : rt ? "✓ v rozmezí" : "bez rozmezí") + (rt ? ` (${rt})` : "");
+      zm.append(z);
+    }
+    row.append(zm);
+    return row;
+  }
+
+  async function ulozMod(analyt, mod) {
+    const stary = stav.nastaveni[analyt]; stav.nastaveni[analyt] = mod; vykresliRozbory(); const sel = document.querySelector(`.uk-mod[data-a="${CSS.escape(analyt)}"]`); if (sel) sel.focus();
+    try { await api("/labs/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analyte: analyt, mode: mod }) }); }
+    catch (e) { if (stary === undefined) delete stav.nastaveni[analyt]; else stav.nastaveni[analyt] = stary; vykresliRozbory(); $("pdf-stav").textContent = "Interpretaci se nepodařilo uložit: " + e.message; $("pdf-stav").className = "msg err"; }
+  }
 
   function vykresliRozbory(radky) {
-    $("rozbory-sekce").hidden = false;
-    $("rozbory-wrap").hidden = !radky.length; $("rozbory-prazdna").hidden = radky.length > 0;
-    const tab = $("rozbory-tab"); tab.replaceChildren();
-    if (!radky.length) return;
-    const odbery = [...new Set(radky.map((r) => r.taken_on))].sort().reverse().slice(0, 6);   // nejnovější vlevo
-    const analyty = [], posledni = new Map();
-    for (const r of radky) {
-      if (!posledni.has(r.analyte)) analyty.push(r.analyte);
-      if (!posledni.has(r.analyte) || r.taken_on >= posledni.get(r.analyte).taken_on) posledni.set(r.analyte, r);
+    if (radky) {
+      stav.rozbory = radky;
+      const datumy = [...new Set(radky.map((r) => r.taken_on))].sort().reverse();
+      if (!datumy.includes(stav.cmpNovy)) stav.cmpNovy = datumy[0];
+      if (!datumy.includes(stav.cmpStary) || stav.cmpStary === stav.cmpNovy) stav.cmpStary = datumy.find((d) => d !== stav.cmpNovy) || null;
+      stav.datumy = datumy;
     }
+    $("rozbory-sekce").hidden = false;
+    const mamData = stav.rozbory.length > 0;
+    $("rozbory-obsah").hidden = !mamData; $("rozbory-prazdna").hidden = mamData;
+    if (!mamData) return;
+
+    for (const [id, vybrano, prazdne] of [["cmp-novy", stav.cmpNovy, false], ["cmp-stary", stav.cmpStary, true]]) {
+      const s = $(id); s.replaceChildren();
+      if (prazdne) { const o = document.createElement("option"); o.value = ""; o.textContent = "bez porovnání"; s.append(o); }
+      for (const d of stav.datumy) { const o = document.createElement("option"); o.value = d; o.textContent = dlouzeDatum(d); s.append(o); }
+      s.value = vybrano || "";
+    }
+
+    const model = modelRozboru(), kolik = { vse: model.length, mimo: 0, lepsi: 0, horsi: 0 };
+    for (const a of model) { if (a.mimo) kolik.mimo++; if (a.posudek.verdikt === "lepsi") kolik.lepsi++; if (a.posudek.verdikt === "horsi") kolik.horsi++; }
+    const kpi = $("rozbory-kpi"); kpi.replaceChildren();
+    for (const [k, nadpis] of [["vse", "Ukazatelů"], ["mimo", "Mimo rozmezí"], ["lepsi", "Zlepšeno"], ["horsi", "Zhoršeno"]]) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "kpi-dlazdice kpi-" + k; b.setAttribute("aria-pressed", String(stav.filtrRozbory === k));
+      const c = document.createElement("span"); c.className = "kpi-cislo"; c.textContent = kolik[k];
+      const t = document.createElement("span"); t.className = "kpi-text"; t.textContent = nadpis; b.append(c, t);
+      b.addEventListener("click", () => { stav.filtrRozbory = stav.filtrRozbory === k ? "vse" : k; vykresliRozbory(); });
+      kpi.append(b);
+    }
+
+    const filtr = stav.filtrRozbory, host = $("rozbory-prehled"); host.replaceChildren();
+    const vyber = model.filter((a) => filtr === "vse" || (filtr === "mimo" && a.mimo) || (filtr === "lepsi" && a.posudek.verdikt === "lepsi") || (filtr === "horsi" && a.posudek.verdikt === "horsi"));
+    const poradi = [...SKUPINY.map((x) => x[0]).filter((n) => n !== "Moč"), "Ostatní", "Moč"], skupiny = new Map();      // moč až na konec
+    for (const a of vyber) (skupiny.get(a.skupina) || skupiny.set(a.skupina, []).get(a.skupina)).push(a);
+    for (const nazev of poradi) {
+      const lst = skupiny.get(nazev); if (!lst) continue;
+      const sec = document.createElement("section"); sec.className = "uk-skupina";
+      const h = document.createElement("h3"); h.textContent = `${nazev} (${lst.length})`; sec.append(h);
+      const kart = document.createElement("div"); kart.className = "uk-karta"; for (const a of lst) kart.append(radekUkazatele(a)); sec.append(kart); host.append(sec);
+    }
+    if (!vyber.length) { const p = document.createElement("p"); p.className = "msg"; p.textContent = "Žádný ukazatel nevyhovuje filtru."; host.append(p); }
+    vykresliTabulkuRozboru();
+  }
+
+  // tabulka: všechny odběry vedle sebe (stejná data jako přehled)
+  function vykresliTabulkuRozboru() {
+    const tab = $("rozbory-tab"); tab.replaceChildren();
+    const odbery = stav.datumy.slice(0, 6), analyty = [], posledni = new Map();
+    for (const r of stav.rozbory) { if (!posledni.has(r.analyte)) analyty.push(r.analyte); if (!posledni.has(r.analyte) || r.taken_on >= posledni.get(r.analyte).taken_on) posledni.set(r.analyte, r); }
     const hr = tab.createTHead().insertRow();
     for (const h of ["Analyt", ...odbery.map(dlouzeDatum), "Ref. meze"]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
     const tb = tab.createTBody();
     for (const a of analyty) {
-      const tr = tb.insertRow(), pos = posledni.get(a), nazev = tr.insertCell();
-      nazev.className = "nazev"; nazev.textContent = a;
+      const tr = tb.insertRow(), pos = posledni.get(a), nazev = tr.insertCell(); nazev.className = "nazev"; nazev.textContent = a;
       if (pos.unit) { const u = document.createElement("small"); u.textContent = " " + pos.unit; nazev.append(u); }
       for (const d of odbery) {
-        const r = radky.find((x) => x.analyte === a && x.taken_on === d), td = tr.insertCell();
+        const r = stav.rozbory.find((x) => x.analyte === a && x.taken_on === d), td = tr.insertCell();
         td.textContent = r ? hodnotaText(r) + (mimoRozsah(r) ? smer(r) : "") : "–";
         if (r && mimoRozsah(r)) { td.className = "mimo"; td.title = "Mimo referenční meze"; }
       }
       const ref = tr.insertCell(); ref.className = "ref"; ref.textContent = refText(pos);
     }
   }
-  const dlouzeDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
+  $("cmp-novy").addEventListener("change", (e) => { stav.cmpNovy = e.target.value; if (stav.cmpStary === stav.cmpNovy) stav.cmpStary = stav.datumy.find((d) => d !== stav.cmpNovy) || null; vykresliRozbory(); });
+  $("cmp-stary").addEventListener("change", (e) => { stav.cmpStary = e.target.value || null; vykresliRozbory(); });
+  $("rozbory-prepni").addEventListener("click", () => {
+    const tab = $("rozbory-prepni").getAttribute("aria-pressed") !== "true";
+    $("rozbory-prepni").setAttribute("aria-pressed", String(tab)); $("rozbory-prepni").textContent = tab ? "Zobrazit přehled" : "Zobrazit tabulku";
+    $("rozbory-prehled").hidden = tab; $("rozbory-kpi").hidden = tab; $("rozbory-legenda").hidden = tab; $("rozbory-wrap").hidden = !tab;
+  });
+  let rafRozbory = 0, sirkaRozboru = 0;
+  new ResizeObserver(() => {                                         // překreslit jen při změně šířky (jinak by se výška točila dokola)
+    cancelAnimationFrame(rafRozbory);
+    rafRozbory = requestAnimationFrame(() => {
+      const w = $("rozbory-prehled").clientWidth;
+      if (w !== sirkaRozboru && w > 0) { sirkaRozboru = w; if (stav.rozbory.length && $("rozbory-prepni").getAttribute("aria-pressed") !== "true") vykresliRozbory(); }
+    });
+  }).observe($("rozbory-prehled"));
 
   // nahrání PDF: server z něj jen vyčte hodnoty (PDF se neukládá), uloží se až po potvrzení náhledu
   let nahled = null;
@@ -586,7 +862,8 @@
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
-      const [osa, metriky, rozbory] = await Promise.all([api("/timeline"), nactiMetriky(), api("/labs")]);
+      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline"), nactiMetriky(), api("/labs"), api("/labs/settings").catch(() => ({}))]);
+      stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
       $("stav").textContent = ""; $("ovladani").hidden = false; $("hist-radek").hidden = false;
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
@@ -682,6 +959,32 @@
       if (e.status === 401) { zprava(""); bannerPrihlaseni(); nutnePrihlaseni(e.message); } else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");
     } finally { tl.disabled = false; }
   };
+
+
+  // ---------- záložky ----------
+  const ZALOZKY = ["garmin", "rozbory", "data"];
+  function otevriZalozku(nazev, fokus) {
+    if (!ZALOZKY.includes(nazev)) nazev = "garmin";
+    for (const z of ZALOZKY) {
+      const t = $("tab-" + z), vybrana = z === nazev;
+      t.setAttribute("aria-selected", String(vybrana)); t.tabIndex = vybrana ? 0 : -1; $("panel-" + z).hidden = !vybrana;
+      if (vybrana && fokus) t.focus();
+    }
+    try { localStorage.setItem("zalozka", nazev); } catch (e) {}
+    if (nazev === "garmin" && stav.metriky.length && !stav.tabulka) vykresliGrafy();       // graf v skrytém panelu měl nulovou šířku
+    if (nazev === "rozbory" && stav.rozbory.length) vykresliRozbory();
+  }
+  document.querySelectorAll('[role="tab"]').forEach((t) => {
+    t.addEventListener("click", () => otevriZalozku(t.id.replace("tab-", "")));
+    t.addEventListener("keydown", (e) => {
+      const i = ZALOZKY.indexOf(t.id.replace("tab-", ""));
+      if (e.key === "ArrowRight") { otevriZalozku(ZALOZKY[(i + 1) % ZALOZKY.length], true); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { otevriZalozku(ZALOZKY[(i + ZALOZKY.length - 1) % ZALOZKY.length], true); e.preventDefault(); }
+      else if (e.key === "Home") { otevriZalozku(ZALOZKY[0], true); e.preventDefault(); }
+      else if (e.key === "End") { otevriZalozku(ZALOZKY[ZALOZKY.length - 1], true); e.preventDefault(); }
+    });
+  });
+  { let z = new URLSearchParams(location.search).get("zalozka"); try { z = z || localStorage.getItem("zalozka"); } catch (e) {} otevriZalozku(z || "garmin"); }
 
   bannerPrihlaseni();
   nacti().then(() => { try { sessionStorage.removeItem("sso-pokus"); } catch (e) {} })
