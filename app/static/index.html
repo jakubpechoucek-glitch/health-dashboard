@@ -6,53 +6,146 @@
 <meta name="robots" content="noindex">
 <title>Zdravotní přehled</title>
 <style>
-  :root { --bg:#f4f2ee; --text:#1c1c1e; --muted:#66656b; --line:#dedad2; --tile:#fff; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#121214; --text:#ececef; --muted:#9b9aa2; --line:#2b2b30; --tile:#1c1c20; } }
+  :root { --bg:#f4f2ee; --text:#1c1c1e; --muted:#66656b; --line:#dedad2; --tile:#fff; --accent:#e5484d; --ok:#1f7a5c; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121214; --text:#ececef; --muted:#9b9aa2; --line:#2b2b30; --tile:#1c1c20; --accent:#ff6b70; --ok:#4cc79a; --err:#ff8a80; } }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 system-ui,sans-serif; }
-  main { max-width:760px; margin:0 auto; padding:32px 16px; }
-  h1 { font-size:1.6rem; margin:0 0 16px; }
-  .msg { color:var(--muted); }
-  ul { list-style:none; padding:0; }
+  main { max-width:860px; margin:0 auto; padding:28px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  h2 { font-size:1.1rem; margin:28px 0 10px; }
+  .msg { color:var(--muted); margin:6px 0; }
+  .msg.err { color:var(--err); } .msg.ok { color:var(--ok); }
+  .bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px; }
+  button, select { font:inherit; padding:9px 16px; border-radius:999px; border:1px solid var(--line); background:var(--tile); color:var(--text); }
+  button.primary { background:var(--text); color:var(--bg); border-color:var(--text); cursor:pointer; font-weight:600; }
+  button:disabled { opacity:.55; cursor:progress; }
+  .tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:12px; background:var(--tile); }
+  table { border-collapse:collapse; width:100%; font-size:.92rem; white-space:nowrap; }
+  th, td { padding:8px 12px; text-align:right; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:600; font-size:.8rem; }
+  tr:last-child td { border-bottom:0; }
+  ul { list-style:none; padding:0; margin:0; }
   li { background:var(--tile); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:8px; }
-  li small { color:var(--muted); display:block; }
-  .out { color:#b3261e; font-weight:600; }
+  .out { color:var(--err); font-weight:600; }
 </style>
 </head>
 <body>
 <main>
   <h1>🫀 Zdravotní přehled</h1>
   <p class="msg" id="stav">Načítám…</p>
-  <ul id="osa"></ul>
+
+  <div class="bar" id="ovladani" hidden>
+    <button class="primary" id="sync">⟳ Synchronizovat Garmin</button>
+    <label>za posledních
+      <select id="dny">
+        <option value="7">7 dní</option>
+        <option value="30">30 dní</option>
+        <option value="90">90 dní</option>
+        <option value="365">rok (první import)</option>
+      </select>
+    </label>
+  </div>
+  <p class="msg" id="sync-stav" role="status"></p>
+
+  <section id="garmin" hidden>
+    <h2>Garmin: posledních 14 dní</h2>
+    <div class="tablewrap"><table id="tab"></table></div>
+  </section>
+
+  <section id="osa-sekce" hidden>
+    <h2>Časová osa (vyšetření a rozbory)</h2>
+    <ul id="osa"></ul>
+    <p class="msg" id="osa-prazdna" hidden>Zatím žádná vyšetření ani rozbory.</p>
+  </section>
 </main>
 <script>
   // Přihlášení předá Rozcestník v adrese: #sso=<token>. Uložíme do sessionStorage a z adresy smažeme.
   const ROZCESTNIK = "https://jakubpechoucek-glitch.github.io/rozcestnik/?sso=zdravi";
-  const stav = document.getElementById("stav"), osa = document.getElementById("osa");
+  const $ = (id) => document.getElementById(id);
   const m = /[#&]sso=([^&]+)/.exec(location.hash);
   if (m) {
     try { sessionStorage.setItem("token", decodeURIComponent(m[1])); } catch (e) {}
     history.replaceState(null, "", location.pathname + location.search);
   }
-  const prihlasit = (text) => { stav.innerHTML = `${text} <a href="${ROZCESTNIK}">Přihlásit přes Rozcestník</a>`; };
+  const token = () => { try { return sessionStorage.getItem("token"); } catch (e) { return null; } };
+  const nutnePrihlaseni = (text) => { $("stav").innerHTML = ""; $("stav").append(text + " ");
+    const a = document.createElement("a"); a.href = ROZCESTNIK; a.textContent = "Přihlásit přes Rozcestník"; $("stav").append(a); };
 
-  (async () => {
-    let token = null;
-    try { token = sessionStorage.getItem("token"); } catch (e) {}
-    if (!token) return prihlasit("Nejsi přihlášen.");
-    const r = await fetch("/timeline", { headers: { Authorization: "Bearer " + token } });
-    if (r.status === 401) return prihlasit("Přihlášení vypršelo.");
-    if (r.status === 403) return (stav.textContent = "Tento účet nemá přístup.");
-    if (!r.ok) return (stav.textContent = "Chyba " + r.status);
-    const data = await r.json();
-    stav.textContent = data.length ? "" : "Zatím žádné záznamy.";
+  class Chyba extends Error { constructor(status, text) { super(text); this.status = status; } }
+  async function api(path, opts = {}) {
+    const t = token();
+    if (!t) throw new Chyba(401, "Nejsi přihlášen.");
+    const r = await fetch(path, { ...opts, headers: { Authorization: "Bearer " + t } });
+    if (r.status === 401) throw new Chyba(401, "Přihlášení vypršelo.");
+    if (r.status === 403) throw new Chyba(403, "Tento účet nemá přístup.");
+    if (!r.ok) throw new Chyba(r.status, "Chyba " + r.status);
+    return r.json();
+  }
+
+  // sloupce tabulky: [klíč metriky, nadpis, převod hodnoty]
+  const SLOUPCE = [
+    ["steps", "Kroky", (v) => Math.round(v).toLocaleString("cs-CZ")],
+    ["resting_hr", "Klidový tep", (v) => Math.round(v)],
+    ["sleep_seconds", "Spánek", (v) => (v / 3600).toFixed(1).replace(".", ",") + " h"],
+    ["sleep_score", "Skóre spánku", (v) => Math.round(v)],
+    ["hrv_last_night_avg", "HRV", (v) => Math.round(v) + " ms"],
+    ["avg_stress", "Stres", (v) => Math.round(v)],
+    ["body_battery_max", "Body Battery", (v) => Math.round(v)],
+  ];
+
+  function vykresliTabulku(rows) {
+    const dny = {};
+    for (const r of rows) (dny[r.day] ||= {})[r.metric] = r.value;
+    const seznam = Object.keys(dny).sort().reverse().slice(0, 14);
+    $("garmin").hidden = false;
+    const tab = $("tab"); tab.replaceChildren();
+    if (!seznam.length) { const tr = tab.insertRow(); const td = tr.insertCell(); td.colSpan = SLOUPCE.length + 1;
+      td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; return; }
+    const hr = tab.createTHead().insertRow();
+    for (const h of ["Den", ...SLOUPCE.map((s) => s[1])]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
+    const tb = tab.createTBody();
+    for (const den of seznam) {
+      const tr = tb.insertRow();
+      tr.insertCell().textContent = new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric" });
+      for (const [klic, , fmt] of SLOUPCE) { const v = dny[den][klic]; tr.insertCell().textContent = v == null ? "–" : fmt(v); }
+    }
+  }
+
+  function vykresliOsu(data) {
+    $("osa-sekce").hidden = false; $("osa").replaceChildren();
+    $("osa-prazdna").hidden = data.length > 0;
     for (const i of data) {
       const li = document.createElement("li");
-      const hodnota = i.type === "lab" ? `${i.value} ${i.unit}` : "";
-      li.textContent = `${i.day} · ${i.title} ${hodnota}`;
+      li.textContent = `${i.day} · ${i.title}` + (i.type === "lab" ? ` ${i.value} ${i.unit}` : "");
       if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = " ⚠ mimo rozsah"; li.append(o); }
-      osa.append(li);
+      $("osa").append(li);
     }
-  })();
+  }
+
+  async function nacti() {
+    const od = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+    const [osa, metriky] = await Promise.all([api("/timeline"), api("/metrics?from=" + od)]);
+    $("stav").textContent = ""; $("ovladani").hidden = false;
+    vykresliTabulku(metriky); vykresliOsu(osa);
+  }
+
+  function zprava(text, trida) { const e = $("sync-stav"); e.textContent = text; e.className = "msg " + (trida || ""); }
+
+  $("sync").onclick = async () => {
+    const tl = $("sync"); tl.disabled = true; zprava("Stahuji z Garminu… u delšího období to může trvat i minutu.");
+    try {
+      const r = await api("/garmin/sync?days=" + $("dny").value, { method: "POST" });
+      if (r.errors.length) zprava(`Uloženo ${r.metrics_stored} hodnot, ale některá data se nepodařilo stáhnout: ${r.errors.join(" | ")}`, "err");
+      else zprava(`Hotovo: uloženo ${r.metrics_stored} hodnot (${r.from} až ${r.to}).`, "ok");
+      await nacti();
+    } catch (e) {
+      if (e.status === 401) nutnePrihlaseni(e.message); else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");
+    } finally { tl.disabled = false; }
+  };
+
+  nacti().catch((e) => { if (e.status === 401) nutnePrihlaseni(e.message || "Nejsi přihlášen."); else $("stav").textContent = e.message; });
 </script>
 </body>
 </html>
