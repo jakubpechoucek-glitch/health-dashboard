@@ -28,6 +28,13 @@ U každého ukazatele je:
 
 Nahoře jsou dlaždice-filtry (všechny / mimo rozmezí / zlepšeno / zhoršeno), výběr dvou porovnávaných odběrů a přepínač na tabulku se všemi odběry.
 
+### Vysvětlivky
+
+Každý ukazatel má pod sebou rozbalovací **„Co to je“**: celý název (např. AST = aspartátaminotransferáza), co se měří a s čím obecně
+může souviset vyšší nebo nižší hodnota. Tlačítko **Rozbalit vysvětlivky** rozbalí všechny najednou. Texty jsou ve slovníku `VYSVETLENI`
+v `index.html` a pokrývají všech 46 ukazatelů z dosavadních listů (včetně moči). U neznámého ukazatele se zobrazí, že vysvětlení zatím není.
+Jde o obecnou informaci pro orientaci, ne o výklad konkrétního výsledku.
+
 ### Interpretace ukazatele
 
 Každý ukazatel se čte jinak, proto je hodnocení změny volitelné:

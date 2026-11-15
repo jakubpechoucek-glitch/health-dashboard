@@ -126,6 +126,15 @@
   .uk-graf svg { display:block; width:100%; height:auto; }
   .uk-graf svg text { fill:var(--text-muted); font:10.5px system-ui,sans-serif; }
   .uk-text { font-size:1.05rem; }
+  .uk-info { grid-column:1 / -1; margin-top:2px; font-size:.84rem; }
+  .uk-info summary { cursor:pointer; color:var(--text-secondary); width:fit-content; }
+  .uk-info summary:hover { color:var(--text); }
+  .uk-info[open] summary { color:var(--text); font-weight:600; }
+  .uk-info-text { max-width:80ch; margin-top:6px; padding:8px 12px; border-left:3px solid var(--series-1); background:color-mix(in srgb, var(--series-1) 7%, transparent); border-radius:0 8px 8px 0; color:var(--text-secondary); line-height:1.45; }
+  .uk-info-text p { margin:4px 0 0; }
+  .uk-info-text strong { color:var(--text); }
+  .uk-info-text b { color:var(--text); font-weight:600; }
+  .uk-info-pozn { font-size:.76rem; color:var(--text-muted); }
   .uk-zmena { font-size:.88rem; }
   .uk-posun { font-weight:600; }
   .verdikt { display:inline-block; margin-top:2px; padding:1px 10px; border-radius:999px; font-size:.82rem; font-weight:600; border:1px solid var(--line); color:var(--text-secondary); }
@@ -213,7 +222,8 @@
         <div class="filtr" id="rozbory-filtr">
           <label>Porovnat <select id="cmp-novy" aria-label="Novější odběr"></select></label>
           <label>s <select id="cmp-stary" aria-label="Starší odběr"></select></label>
-          <button type="button" class="vpravo" id="rozbory-prepni" aria-pressed="false">Zobrazit tabulku</button>
+          <button type="button" class="vpravo" id="rozbory-vysv">Rozbalit vysvětlivky</button>
+          <button type="button" id="rozbory-prepni" aria-pressed="false">Zobrazit tabulku</button>
         </div>
         <p class="legenda" id="rozbory-legenda">
           <span class="lg lg-pas"></span> referenční rozmezí laboratoře ·
@@ -325,7 +335,7 @@
   const osaX = (den) => (stav.rozsah > 300 ? new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { month: "numeric", year: "numeric" }) : kratce(den));
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
-  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse" };
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set() };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -565,6 +575,57 @@
     ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW)\b/],
     ["Prostata", /^PSA$/],
   ];
+
+  // ---------- vysvětlivky ukazatelů (obecná informace pro orientaci, ne výklad výsledku) ----------
+  // jmeno = celý název, co = co se měří, vyssi / nizsi = s čím může vyšší / nižší hodnota obecně souviset
+  const VYSVETLENI = {
+    "Urea": { jmeno: "Urea (močovina)", co: "Konečný produkt odbourávání bílkovin, vylučuje se ledvinami. Spolu s kreatininem patří k základním ukazatelům funkce ledvin.", vyssi: "snížená funkce ledvin, nedostatek tekutin, strava bohatá na bílkoviny, krvácení do trávicího traktu", nizsi: "nízký příjem bílkovin, těžší onemocnění jater, nadměrné ředění organismu" },
+    "Kreatinin": { jmeno: "Kreatinin", co: "Odpadní látka ze svalového metabolismu, vylučuje se ledvinami. Hlavní ukazatel funkce ledvin, z něj se počítá GF (eGFR).", vyssi: "horší funkce ledvin, nedostatek tekutin, velká svalová hmota nebo intenzivní trénink, některé léky a doplňky (např. kreatin)", nizsi: "malá svalová hmota" },
+    "Kyselina močová": { jmeno: "Kyselina močová", co: "Konečný produkt odbourávání purinů (látky ve stravě i v buňkách). Vylučuje se ledvinami.", vyssi: "dna (pakostnice), ledvinové kameny, nadbytek masa, alkoholu a sladkých nápojů, metabolický syndrom, snížená funkce ledvin", nizsi: "obvykle bez významu" },
+    "GF CKD-EPI": { jmeno: "GF CKD-EPI (odhadovaná glomerulární filtrace, eGFR)", co: "Odhad toho, kolik krve ledviny přefiltrují za čas. Počítá se z kreatininu, věku a pohlaví. Čím vyšší, tím lepší funkce ledvin.", nizsi: "snížená funkce ledvin (stav se hodnotí vždy s dalšími vyšetřeními a v čase)" },
+    "Hodnocení CKD dle eGFR": { jmeno: "Stupeň chronického onemocnění ledvin (G1 až G5)", co: "Zařazení podle eGFR. G1 odpovídá normální nebo vysoké filtraci. Samotné G1 nebo G2 ještě neznamená onemocnění ledvin, to se určuje spolu s dalšími nálezy (např. bílkovina v moči)." },
+    "Na - natrium": { jmeno: "Natrium (sodík)", co: "Hlavní minerál mimo buňky, řídí rozložení vody v těle a krevní tlak.", vyssi: "nedostatek vody v těle", nizsi: "nadbytek vody, některé léky (např. diuretika), ztráty při zvracení nebo průjmu" },
+    "K - kalium": { jmeno: "Kalium (draslík)", co: "Minerál důležitý pro činnost srdce, svalů a nervů. Hodnoty mimo rozmezí mohou ovlivnit srdeční rytmus.", vyssi: "snížená funkce ledvin, některé léky, rozpad buněk, hemolýza vzorku", nizsi: "průjem a zvracení, diuretika, nedostatek v potravě" },
+    "Cl - chloridy": { jmeno: "Chloridy", co: "Minerál, který spolu s natriem udržuje vodní a acidobazickou rovnováhu. Mění se obvykle společně s natriem.", vyssi: "nedostatek vody, některé poruchy acidobazické rovnováhy", nizsi: "zvracení, nadbytek vody, některé léky" },
+    "Bilirubin celk.": { jmeno: "Bilirubin celkový", co: "Žlučové barvivo, které vzniká při rozpadu červeného krevního barviva. Zpracovávají ho játra a odchází žlučí.", vyssi: "onemocnění jater nebo žlučových cest, zvýšený rozpad červených krvinek; mírné izolované zvýšení bývá u Gilbertova syndromu (neškodná vrozená varianta)", nizsi: "obvykle bez významu" },
+    "ALT": { jmeno: "ALT (alaninaminotransferáza)", co: "Enzym, který je nejvíc v jaterních buňkách. Při jejich poškození se dostává do krve, proto je citlivým ukazatelem stavu jater.", vyssi: "tuková játra, zánět jater, alkohol, některé léky a doplňky, intenzivní zátěž", nizsi: "obvykle bez významu" },
+    "AST": { jmeno: "AST (aspartátaminotransferáza)", co: "Enzym, který je v játrech, ale také ve svalech a srdci. Zvyšuje se při poškození těchto tkání. Hodnotí se spolu s ALT.", vyssi: "poškození jater, intenzivní cvičení nebo svalové poškození, některé léky, alkohol", nizsi: "obvykle bez významu" },
+    "GGT": { jmeno: "GGT (gama-glutamyltransferáza)", co: "Enzym v játrech a žlučových cestách. Je citlivý na zátěž jater alkoholem a léky a na onemocnění žlučových cest.", vyssi: "alkohol, tuková játra, některé léky, onemocnění žlučových cest", nizsi: "obvykle bez významu" },
+    "ALP": { jmeno: "ALP (alkalická fosfatáza)", co: "Enzym v játrech a žlučových cestách a také v kostech.", vyssi: "onemocnění žlučových cest nebo kostí, růst u dětí a dospívajících, hojení zlomenin", nizsi: "vzácné poruchy, nedostatek některých látek" },
+    "Celk.bílkovina": { jmeno: "Celková bílkovina", co: "Součet bílkovin v krvi (hlavně albuminu a imunoglobulinů). Odráží výživu, funkci jater a ledvin a imunitní systém.", vyssi: "nedostatek tekutin, dlouhodobý zánět, některé poruchy imunity", nizsi: "ztráty bílkovin ledvinami nebo střevem, onemocnění jater, podvýživa" },
+    "Cholesterol": { jmeno: "Cholesterol celkový", co: "Tuková látka potřebná pro stavbu buněk a tvorbu hormonů. Je to součet všech frakcí (LDL, HDL a dalších). Pro riziko je důležitější poměr frakcí než samotné celkové číslo.", vyssi: "strava bohatá na nasycené tuky, dědičná predispozice, nedostatek pohybu, některé nemoci (např. snížená funkce štítné žlázy)", nizsi: "obvykle nepříznivé jen při velmi nízkých hodnotách" },
+    "HDL cholesterol": { jmeno: "HDL cholesterol („ochranný“)", co: "Odvádí cholesterol z cév zpět do jater. Vyšší hodnoty bývají z hlediska srdce a cév příznivé.", nizsi: "nedostatek pohybu, kouření, nadváha, vysoké triacylglyceroly, dědičnost" },
+    "non-HDL cholesterol": { jmeno: "non-HDL cholesterol", co: "Celkový cholesterol minus HDL. Zahrnuje všechny částice, které se mohou ukládat do cévní stěny (LDL, VLDL, Lp(a)). Rizika vystihuje lépe než samotný celkový cholesterol, zvlášť při vyšších triacylglycerolech.", vyssi: "vyšší riziko aterosklerózy (rozhoduje celkové riziko, ne jedno číslo)" },
+    "LDL cholesterol": { jmeno: "LDL cholesterol („škodlivý“)", co: "Přenáší cholesterol do tkání a může se ukládat ve stěnách tepen. Nižší hodnota je z hlediska rizika příznivější. Cílová hodnota závisí na celkovém riziku člověka, proto ji určuje lékař.", vyssi: "vyšší riziko aterosklerózy, strava s nasycenými tuky, dědičná predispozice" },
+    "Triacylglyceroly": { jmeno: "Triacylglyceroly (triglyceridy)", co: "Krevní tuky, zásobní forma energie. Odebírají se nalačno, protože po jídle stoupají.", vyssi: "nadbytek cukrů a alkoholu ve stravě, nadváha, cukrovka, dědičnost; zvyšují kardiovaskulární riziko", nizsi: "obvykle bez významu" },
+    "Lp(a)": { jmeno: "Lipoprotein (a)", co: "Částice podobná LDL, jejíž hladina je z velké části dědičná a během života se příliš nemění, proto se zpravidla stanovuje jednou. Vyšší hodnota je samostatný rizikový faktor aterosklerózy; životním stylem se ovlivňuje jen málo.", vyssi: "vyšší riziko srdečních a cévních onemocnění (věc k probrání s lékařem, spolu s ostatními rizikovými faktory)" },
+    "FIB-4 index": { jmeno: "FIB-4 index", co: "Výpočet z věku, AST, ALT a počtu krevních destiček. Slouží k orientačnímu odhadu rizika jaterní fibrózy (zjizvení jater). Nižší hodnota znamená nižší riziko; nejde o diagnózu.", vyssi: "vyšší pravděpodobnost pokročilého poškození jater (potvrzuje se dalšími vyšetřeními)" },
+    "Glukóza": { jmeno: "Glukóza (krevní cukr)", co: "Hlavní zdroj energie pro tělo. Hodnota nalačno je základní vyšetření poruch cukrového metabolismu.", vyssi: "opakovaně zvýšená hodnota nalačno: prediabetes nebo cukrovka (potvrzuje lékař); jednorázově také jídlo před odběrem nebo stres", nizsi: "hypoglykémie, dlouhý půst, některé léky" },
+    "WBC - leukocyty": { jmeno: "WBC (leukocyty, bílé krvinky)", co: "Krvinky, které chrání před infekcemi. Udává se jejich celkový počet.", vyssi: "infekce, zánět, stres, kouření, některé léky (např. kortikoidy)", nizsi: "virové infekce, některé léky, poruchy krvetvorby" },
+    "RBC - erytrocyty": { jmeno: "RBC (erytrocyty, červené krvinky)", co: "Krvinky, které přenášejí kyslík. Udává se jejich počet.", vyssi: "nedostatek tekutin, kouření, pobyt ve výšce, některé poruchy krvetvorby", nizsi: "chudokrevnost (anémie), ztráty krve, nedostatek železa nebo vitaminů" },
+    "HB - hemoglobin": { jmeno: "Hemoglobin", co: "Červené krevní barvivo v erytrocytech, které váže kyslík. Základní ukazatel chudokrevnosti.", vyssi: "nedostatek tekutin, kouření, pobyt ve výšce, některé poruchy krvetvorby", nizsi: "anémie: nedostatek železa nebo vitaminu B12 či folátu, ztráty krve, chronická onemocnění" },
+    "HCT - hematokrit": { jmeno: "Hematokrit", co: "Podíl objemu krve, který tvoří červené krvinky. Mění se spolu s hemoglobinem a počtem erytrocytů.", vyssi: "nedostatek tekutin, kouření, pobyt ve výšce", nizsi: "anémie, nadbytek tekutin" },
+    "MCV-stř.obj.ery": { jmeno: "MCV (střední objem erytrocytu)", co: "Průměrná velikost červených krvinek. Pomáhá určit typ chudokrevnosti.", vyssi: "velké krvinky: nedostatek vitaminu B12 nebo folátu, alkohol, některé léky", nizsi: "malé krvinky: nedostatek železa, některé dědičné poruchy" },
+    "MCHC - st.bar.k.": { jmeno: "MCHC (střední koncentrace hemoglobinu v erytrocytu)", co: "Jak hustě je krvinka naplněná hemoglobinem.", nizsi: "„bledé“ krvinky, typicky při nedostatku železa" },
+    "MCH - bar.k.ery": { jmeno: "MCH (střední množství hemoglobinu v erytrocytu)", co: "Průměrné množství hemoglobinu v jedné červené krvince. Mění se spolu s MCV.", nizsi: "nedostatek železa", vyssi: "velké krvinky (nedostatek B12 nebo folátu)" },
+    "PLT - trombocyty": { jmeno: "PLT (trombocyty, krevní destičky)", co: "Drobné krvinky, které se podílejí na srážení krve.", vyssi: "zánět, nedostatek železa, stav po operaci, některé poruchy krvetvorby", nizsi: "některé infekce a léky, onemocnění jater a krvetvorby, vyšší sklon ke krvácení při velmi nízkých hodnotách" },
+    "RDW": { jmeno: "RDW (šíře distribuce velikosti erytrocytů)", co: "Ukazuje, jak moc se červené krvinky liší velikostí.", vyssi: "smíšená populace krvinek, často časný projev nedostatku železa, B12 nebo folátu" },
+    "PSA": { jmeno: "PSA (prostatický specifický antigen)", co: "Bílkovina, kterou tvoří prostata. Slouží ke sledování prostaty. Hodnota se posuzuje podle věku a hlavně v čase, samotné číslo nic nepotvrzuje ani nevylučuje.", vyssi: "zvětšení prostaty, zánět, nádor; ovlivňuje ho také ejakulace, jízda na kole nebo katetrizace krátce před odběrem", nizsi: "obvykle bez významu" },
+    "Glukóza (moč)": { jmeno: "Glukóza v moči", co: "Cukr v moči se za normálních okolností nevyskytuje.", vyssi: "vysoká hladina cukru v krvi (cukrovka), snížený ledvinový práh pro cukr, některé léky" },
+    "Bílkovina (moč)": { jmeno: "Bílkovina v moči", co: "Za normálních okolností jen stopy. Hodnotí se spolu s dalšími výsledky a často se kontroluje opakovaně.", vyssi: "zánět nebo infekce, poškození ledvin; přechodně horečka, silná zátěž nebo dlouhé stání, koncentrovaná moč" },
+    "Bilirubin (moč)": { jmeno: "Bilirubin v moči", co: "Za normálních okolností v moči není.", vyssi: "onemocnění jater nebo žlučových cest" },
+    "Urobilinogen (moč)": { jmeno: "Urobilinogen v moči", co: "Látka vznikající ve střevě z bilirubinu, malé množství je normální.", vyssi: "onemocnění jater, zvýšený rozpad červených krvinek", nizsi: "obstrukce žlučových cest, vliv antibiotik" },
+    "pH (moč)": { jmeno: "pH moči (kyselost)", co: "Kyselost moči, obvykle zhruba 5 až 7. Závisí na stravě, pitném režimu a léčích.", vyssi: "zásaditá moč: strava bohatá na zeleninu, některé infekce močových cest", nizsi: "kyselá moč: strava bohatá na maso, hladovění" },
+    "Krev (moč)": { jmeno: "Krev v moči (hemoglobin, erytrocyty)", co: "Za normálních okolností v moči není nebo jen ve stopách.", vyssi: "infekce, močové kameny, onemocnění ledvin nebo močových cest; také menstruace nebo velká zátěž" },
+    "Leukocyty (moč, proužek)": { jmeno: "Leukocyty v moči (testovací proužek)", co: "Bílé krvinky v moči zjištěné rychlým testem. Za normálních okolností není nález.", vyssi: "zánět nebo infekce močových cest" },
+    "Ketolátky (moč)": { jmeno: "Ketolátky v moči", co: "Vznikají při odbourávání tuků místo cukrů.", vyssi: "půst, nízkosacharidová dieta, zvracení, rozhozená cukrovka" },
+    "Nitrity (moč)": { jmeno: "Nitrity v moči", co: "Některé bakterie mění dusičnany na nitrity.", vyssi: "možná bakteriální infekce močových cest (hodnotí se s leukocyty, příznaky a případně kultivací)" },
+    "Specifická hustota (moč)": { jmeno: "Specifická hustota moči", co: "Koncentrace moči, tedy kolik látek je v ní rozpuštěno.", vyssi: "koncentrovaná moč: málo tekutin, nedostatek vody v těle", nizsi: "naředěná moč: hodně pití, některé poruchy ledvin" },
+    "Erytrocyty (moč, sediment)": { jmeno: "Erytrocyty v močovém sedimentu", co: "Červené krvinky nalezené mikroskopicky po zpracování moči.", vyssi: "infekce, močové kameny, onemocnění ledvin a močových cest" },
+    "Leukocyty (moč, sediment)": { jmeno: "Leukocyty v močovém sedimentu", co: "Bílé krvinky nalezené mikroskopicky po zpracování moči.", vyssi: "zánět nebo infekce močových cest" },
+    "Bakterie (moč, sediment)": { jmeno: "Bakterie v močovém sedimentu", co: "Bakterie nalezené mikroskopicky. Při nízkém počtu může jít o kontaminaci vzorku. Hodnotí se s leukocyty a příznaky.", vyssi: "možná infekce močových cest" },
+    "Hlen (moč, sediment)": { jmeno: "Hlen v močovém sedimentu", co: "Tvoří se ve sliznici močových cest. V malém množství je běžným nálezem a obvykle nemá význam." },
+  };
   const skupinaPro = (a) => (SKUPINY.find(([, re]) => re.test(a)) || ["Ostatní"])[0];
   const MODY = { rozmezi: "v rozmezí je v pořádku", nizsi: "nižší je lepší", vyssi: "vyšší je lepší", nehodnotit: "nehodnotit změnu" };
   const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index)$/.test(a) ? "nizsi"
@@ -677,6 +738,21 @@
     for (const [k, t] of Object.entries(MODY)) { const o = document.createElement("option"); o.value = k; o.textContent = t; if (k === modPro(a.nazev)) o.selected = true; sel.append(o); }
     sel.addEventListener("change", () => ulozMod(a.nazev, sel.value));
     hl.append(nz, sel);
+    const v = VYSVETLENI[a.nazev], det = document.createElement("details"); det.className = "uk-info";
+    if (stav.vysvOtevrene.has(a.nazev)) det.open = true;
+    const sum = document.createElement("summary"); sum.textContent = "Co to je"; det.append(sum);
+    const tx = document.createElement("div"); tx.className = "uk-info-text";
+    if (v) {
+      const j = document.createElement("strong"); j.textContent = v.jmeno; tx.append(j);
+      const co = document.createElement("p"); co.textContent = v.co; tx.append(co);
+      for (const [klic, nadpis] of [["vyssi", "Vyšší hodnota může souviset s"], ["nizsi", "Nižší hodnota může souviset s"]]) if (v[klic]) {
+        const r = document.createElement("p"); const b = document.createElement("b"); b.textContent = nadpis + ": "; r.append(b, document.createTextNode(v[klic])); tx.append(r);
+      }
+      const up = document.createElement("p"); up.className = "uk-info-pozn"; up.textContent = "Obecné vysvětlení pro orientaci. Význam hodnoty závisí na věku, pohlaví, nemocech, lécích a okolnostech odběru, posoudit ji může jen lékař."; tx.append(up);
+    } else { tx.textContent = "K tomuto ukazateli zatím vysvětlení nemám."; }
+    det.append(tx);
+    det.addEventListener("toggle", () => { if (det.open) stav.vysvOtevrene.add(a.nazev); else stav.vysvOtevrene.delete(a.nazev); });
+    
 
     const graf = document.createElement("div"); graf.className = "uk-graf";
     const ref = a.nove || a.stare;
@@ -701,7 +777,7 @@
       z.textContent = (zn > 0 ? "↑ nad rozmezím" : zn < 0 ? "↓ pod rozmezím" : rt ? "✓ v rozmezí" : "bez rozmezí") + (rt ? ` (${rt})` : "");
       zm.append(z);
     }
-    row.append(zm);
+    row.append(zm, det);
     return row;
   }
 
@@ -777,10 +853,16 @@
   }
   $("cmp-novy").addEventListener("change", (e) => { stav.cmpNovy = e.target.value; if (stav.cmpStary === stav.cmpNovy) stav.cmpStary = stav.datumy.find((d) => d !== stav.cmpNovy) || null; vykresliRozbory(); });
   $("cmp-stary").addEventListener("change", (e) => { stav.cmpStary = e.target.value || null; vykresliRozbory(); });
+  $("rozbory-vysv").addEventListener("click", () => {
+    const vse = [...new Set(stav.rozbory.map((r) => r.analyte))];
+    if (stav.vysvOtevrene.size < vse.length) vse.forEach((a) => stav.vysvOtevrene.add(a)); else stav.vysvOtevrene.clear();
+    $("rozbory-vysv").textContent = stav.vysvOtevrene.size ? "Sbalit vysvětlivky" : "Rozbalit vysvětlivky";
+    vykresliRozbory();
+  });
   $("rozbory-prepni").addEventListener("click", () => {
     const tab = $("rozbory-prepni").getAttribute("aria-pressed") !== "true";
     $("rozbory-prepni").setAttribute("aria-pressed", String(tab)); $("rozbory-prepni").textContent = tab ? "Zobrazit přehled" : "Zobrazit tabulku";
-    $("rozbory-prehled").hidden = tab; $("rozbory-kpi").hidden = tab; $("rozbory-legenda").hidden = tab; $("rozbory-wrap").hidden = !tab;
+    $("rozbory-vysv").hidden = tab; $("rozbory-prehled").hidden = tab; $("rozbory-kpi").hidden = tab; $("rozbory-legenda").hidden = tab; $("rozbory-wrap").hidden = !tab;
   });
   let rafRozbory = 0, sirkaRozboru = 0;
   new ResizeObserver(() => {                                         // překreslit jen při změně šířky (jinak by se výška točila dokola)
