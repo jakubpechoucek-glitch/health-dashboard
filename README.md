@@ -12,7 +12,7 @@ Python 3.11+, FastAPI, SQLite (stdlib `sqlite3`), pytest. Frontend (HTMX + Plotl
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
-cp .env.example .env            # doplň GARMIN_WEBHOOK_TOKEN
+cp .env.example .env            # doplň ALLOWED_EMAILS a GARMIN_API_KEY
 pre-commit install              # gitleaks + zákaz commitu dat
 pytest
 uvicorn app.main:app --host 127.0.0.1 --port 8000
@@ -24,7 +24,7 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 
 | Metoda | Cesta | K čemu |
 |---|---|---|
-| POST | `/garmin/webhook/{token}` | příjem push dat z Garmin Health API |
+| POST | `/garmin/sync?days=7` | stáhne data z Garmin Personal API (pull) |
 | GET | `/metrics?metric=&from=&to=` | denní metriky (kroky, klidový tep, spánek…) |
 | POST/GET | `/labs` | krevní rozbory |
 | POST/GET | `/events` | události (vyšetření, výsledek genetiky, změna léků) |

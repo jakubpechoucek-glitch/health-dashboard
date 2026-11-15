@@ -1,7 +1,7 @@
 # Architektura
 
 ```
-Garmin Health API ──push──► /garmin/webhook/{token} ─┐
+Garmin Personal API ◄──pull── POST /garmin/sync ─────┐
 ruční zadání / import PDF ─► /labs, /events ─────────┼─► SQLite (data/health.db) ─► /timeline, /metrics ─► UI
 ```
 

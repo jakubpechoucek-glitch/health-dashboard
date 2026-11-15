@@ -27,7 +27,7 @@ app = FastAPI(
     redoc_url=None,
     openapi_url="/openapi.json" if _docs else None,
 )
-app.include_router(garmin.router)
+app.include_router(garmin.router, dependencies=[Depends(require_auth)])
 app.include_router(records.router, dependencies=[Depends(require_auth)])
 
 

@@ -1,47 +1,48 @@
-# Garmin
+# Garmin Connect Personal API
 
-> **Aktualizace:** místo Health API (push, schvalování firmou) používáme **Garmin Personal API**
-> s osobním API klíčem. Data si aplikace stahuje sama (pull), webhook níže tak nejspíš
-> nebude potřeba. Postup a endpointy se doplní po ověření v dokumentaci portálu.
+Zdroj: [Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api),
+[FAQ](https://developer.garmin.com/gc-developer-program/personal/personal-faq/) a Swagger
+dokumentace Personal API (OpenAPI 3.0, server `https://personal.connectapi.garmin.com`).
 
-## Personal API: získání tokenu
+Aplikace data **stahuje sama (pull)**. Žádný webhook ani veřejná adresa pro Garmin není potřeba.
 
-```bash
-curl -s -X POST 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token' \
-  -H "Authorization: ApiKey $GARMIN_API_KEY"
-```
+## Jak to funguje
 
-API klíč chovat jako heslo (`.env`, na Renderu proměnná prostředí `GARMIN_API_KEY`). Platnost
-tokenu a seznam endpointů s daty je třeba doplnit z dokumentace.
+1. V Garmin Connect (web) vytvoř Personal API Key. Zvol platnost (30 / 90 / 180 dní / rok), klíč se zobrazí **jen jednou**.
+2. Klíč patří do proměnné prostředí `GARMIN_API_KEY` (lokálně `.env`, na Renderu Environment). Nikdy do gitu ani do chatu.
+3. Server pošle klíč na token endpoint a dostane OAuth2 access token:
+   `POST /personalapitoken-service/personal-api/personal-api-key/token`, hlavička `Authorization: ApiKey <klíč>`.
+4. Access token platí **24 h**, refresh token Garmin nepodporuje. Server si ho po 23 h nebo při 401 vyžádá znovu.
+5. Data se čtou přes GET s hlavičkou `Authorization: Bearer <token>`.
 
----
+Garmin pošle e-mail zhruba týden před vypršením klíče. Pak je potřeba vytvořit nový klíč a vyměnit `GARMIN_API_KEY`.
 
-# Původní návrh: Health API (push)
+## Synchronizace
 
-Garmin Health API funguje jako **push**: po autorizaci uživatele posílá Garmin souhrny
-(`dailies`, `sleeps`, `hrv`, `stressDetails`, `activities`…) na tvoje URL. Naše URL je
-`POST /garmin/webhook/{token}`.
+`POST /garmin/sync?days=7` (jen přihlášený vlastník) stáhne posledních N dní (1 až 366).
+První spuštění s `days=365` je historický import.
 
-## Nastavení
+| Endpoint Garminu | Úsek | Uložené metriky |
+|---|---|---|
+| `/usersummary-service/v2/dailysummaries` | až 365 dní | kroky, klidový/min/max tep, stres, Body Battery, kcal, dech, SpO2, intenzivní minuty |
+| `/sleep-service/sleep/dailySleepSummariesByDate` | max 31 dní | délka spánku, hluboký/lehký/REM/bdělost, skóre spánku, tep ve spánku |
+| `/hrv-service/hrv/daily/{od}/{do}` | po 28 dnech | HRV minulé noci a týdenní průměr |
 
-1. V developer portálu Garminu zaregistruj endpoint (HTTPS, veřejně dostupný) a zapni typy souhrnů, které chceš.
-2. Do `.env` dej `GARMIN_WEBHOOK_TOKEN` (náhodný řetězec). Je součástí URL, takže ji zná jen Garmin.
-3. Autorizuj vlastní účet přes OAuth (údaje `GARMIN_CLIENT_ID` / `GARMIN_CLIENT_SECRET`).
-4. Historická data: portál nabízí *backfill*, který dopošle starší období přes stejný webhook.
+Surové odpovědi se ukládají do `garmin_raw`, takže jde mapování polí opravit a data přepočítat bez nového stahování.
+Opakované spuštění je bezpečné (UPSERT podle zdroje, metriky a dne).
 
-## Co je nutné ověřit v aktuální dokumentaci portálu
+## Co zatím není ověřeno proti skutečnému účtu
 
-Dokumentace Garmin Health API je dostupná jen po přihlášení, proto je v kódu pár míst, která
-je třeba proti ní zkontrolovat:
+Specifikace nepopisuje všechno, proto při prvním spuštění zkontroluj:
 
-- **Názvy polí** v `app/garmin.py` (`FIELD_MAP`).
-- **Režim doručení**: *push* (data přímo v těle) vs. *ping* (v těle jen odkaz `callbackURL`,
-  data se stahují zvlášť). Ping zatím není implementován, ale surový payload se uloží.
-- **Způsob autorizace** (OAuth verze) a zda Garmin podepisuje požadavky.
+- **Tvar odpovědi token endpointu.** Kód čeká JSON s `access_token` (nebo `accessToken` / `token`), případně holý text.
+- **Hlavička pro data** je `Authorization: Bearer <token>` (předpoklad z „OAuth2 access token“, Swagger bezpečnostní schéma neuvádí).
+- **Klíč `sleepScores.overall`** pro celkové skóre spánku.
+- **Limity požadavků** nejsou zveřejněné. Server posílá požadavky postupně a při chybě daný typ dat přeskočí a chybu vrátí v odpovědi.
 
-## Veřejně dostupný endpoint a soukromí
+Chyby se vrací v poli `errors` (jen cesta a HTTP kód, nikdy klíč ani obsah odpovědi).
 
-Garmin potřebuje volat naši URL z internetu, zbytek aplikace ale zveřejnit nechceme.
-Doporučení: reverzní proxy / tunel (Cloudflare Tunnel, Tailscale Funnel), který propustí
-**jen** cestu `/garmin/webhook/*`. Aplikace jinak běží na `127.0.0.1`.
-Detaily v [privacy.md](privacy.md).
+## Další endpointy ve specifikaci (zatím nepoužité)
+
+Aktivity (`/activitylist-service/activities/search/activities`, stažení FIT souboru), denní tep,
+Body Battery, SpO2, váha (`/weight-service/weight/...`), výživa, fitness age, zóny tepu, profil, menstruační cyklus.
