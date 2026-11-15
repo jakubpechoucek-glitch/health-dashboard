@@ -91,6 +91,10 @@
   .nahled .tablewrap { max-height:340px; }
   td.mimo { color:var(--err); font-weight:700; }
   td.nazev small, .ref { color:var(--text-secondary); font-weight:400; }
+  .zpet { display:inline-block; font-size:.85rem; font-weight:600; color:var(--text-secondary); text-decoration:none; margin-bottom:16px; }
+  .zpet:hover { color:var(--text); text-decoration:underline; }
+  .banner { border:1px solid var(--err); color:var(--err); border-radius:12px; padding:10px 14px; margin:10px 0; background:var(--surface-1); }
+  .banner a { font-weight:700; }
   .legenda { color:var(--text-secondary); font-size:.85rem; margin:0 0 10px; }
   .osa-radek { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
   .osa-radek .poznamka { display:block; color:var(--text-secondary); font-size:.88rem; margin-top:2px; white-space:pre-wrap; }
@@ -105,7 +109,9 @@
 </head>
 <body>
 <main>
+  <a class="zpet" href="https://jakubpechoucek-glitch.github.io/rozcestnik/">← Rozcestník</a>
   <h1>🫀 Zdravotní přehled</h1>
+  <div class="banner" id="banner" role="alert" hidden></div>
   <p class="msg" id="stav">Načítám…</p>
 
   <div class="bar" id="ovladani" hidden>
@@ -181,10 +187,37 @@
   const nutnePrihlaseni = (text) => { $("stav").textContent = text + " ";
     const a = document.createElement("a"); a.href = ROZCESTNIK; a.textContent = "Přihlásit přes Rozcestník"; $("stav").append(a); };
 
+  // Token z Rozcestníku (Supabase) platí zhruba hodinu. Čas vypršení je v něm (pole exp); podpis tu nekontrolujeme,
+  // to dělá server. Slouží jen k tomu, aby se uživatel dozvěděl včas a nepřišel o rozepsaný text.
+  function tokenExp() {
+    try { const t = token(); if (!t) return null;
+      const b = t.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      return JSON.parse(atob(b + "=".repeat((4 - (b.length % 4)) % 4))).exp * 1000 || null;
+    } catch (e) { return null; }
+  }
+  const vyprsel = () => { const e = tokenExp(); return e != null && e < Date.now() + 5000; };
+  function bannerPrihlaseni() {
+    const e = tokenExp(), b = $("banner"); if (e == null) { b.hidden = true; return; }
+    const zbyva = Math.floor((e - Date.now()) / 60000);
+    if (zbyva >= 5) { b.hidden = true; return; }
+    b.replaceChildren(document.createTextNode(zbyva <= 0 ? "Přihlášení vypršelo. " : `Přihlášení vyprší za ${zbyva + 1} min. Dopiš a ulož, co rozděláš, a pak se přihlas znovu. `));
+    const a = document.createElement("a"); a.href = ROZCESTNIK; a.textContent = "Přihlásit znovu přes Rozcestník"; b.append(a); b.hidden = false;
+  }
+  setInterval(bannerPrihlaseni, 30000); document.addEventListener("visibilitychange", bannerPrihlaseni);
+
+  // Při načtení stránky se po vypršení vrátíme na Rozcestník sami (přihlášený se hned vrátí s novým tokenem).
+  // Pojistka proti smyčce: nejvýš jeden automatický pokus za 30 s.
+  function zNovaPrihlasit() {
+    try { const t = +sessionStorage.getItem("sso-pokus") || 0;
+      if (Date.now() - t > 30000) { sessionStorage.setItem("sso-pokus", String(Date.now())); location.replace(ROZCESTNIK); return true; } } catch (e) {}
+    return false;
+  }
+
   class Chyba extends Error { constructor(status, text) { super(text); this.status = status; } }
   async function api(path, opts = {}) {
     const t = token();
     if (!t) throw new Chyba(401, "Nejsi přihlášen.");
+    if (vyprsel()) { bannerPrihlaseni(); throw new Chyba(401, "Přihlášení vypršelo."); }
     const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + t } });
     if (r.status === 401) throw new Chyba(401, "Přihlášení vypršelo.");
     if (r.status === 403) throw new Chyba(403, "Tento účet nemá přístup.");
@@ -541,11 +574,16 @@
         (Object.keys(v.metrics).length ? ` (${Object.entries(v.metrics).map(([m, n]) => `${m} ${n}×`).join(", ")})` : "")).join("\n");
       await nacti();
     } catch (e) {
-      if (e.status === 401) nutnePrihlaseni(e.message); else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");
+      if (e.status === 401) { zprava(""); bannerPrihlaseni(); nutnePrihlaseni(e.message); } else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");
     } finally { tl.disabled = false; }
   };
 
-  nacti().catch((e) => { if (e.status === 401) nutnePrihlaseni(e.message || "Nejsi přihlášen."); else $("stav").textContent = e.message; });
+  bannerPrihlaseni();
+  nacti().then(() => { try { sessionStorage.removeItem("sso-pokus"); } catch (e) {} })
+    .catch((e) => {
+      if (e.status === 401) { if (!zNovaPrihlasit()) nutnePrihlaseni(e.message || "Nejsi přihlášen."); }
+      else $("stav").textContent = e.message;
+    });
 </script>
 </body>
 </html>
