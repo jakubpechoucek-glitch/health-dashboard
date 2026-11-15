@@ -1,0 +1,12 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: local
+    hooks:
+      - id: no-health-data
+        name: Zákaz commitu dat (db, fit, pdf, data/)
+        entry: "Zdravotní data se necommitují"
+        language: fail
+        files: '(\.db$|\.sqlite3?$|\.fit$|\.pdf$|^data/(?!\.gitkeep))'

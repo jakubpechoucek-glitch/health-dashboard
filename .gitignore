@@ -1,0 +1,16 @@
+# Zdravotní data a tajemství NIKDY do gitu
+data/*
+!data/.gitkeep
+*.db
+*.sqlite*
+*.fit
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/

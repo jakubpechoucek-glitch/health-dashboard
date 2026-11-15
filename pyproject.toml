@@ -1,0 +1,23 @@
+[project]
+name = "health-dashboard"
+version = "0.1.0"
+description = "Osobní zdravotní přehled: Garmin, krevní rozbory, vyšetření a genetika na jedné časové ose."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27", "pre-commit>=3.7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
