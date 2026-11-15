@@ -396,9 +396,9 @@ def test_lab_interpretation_settings(client):
 
 def test_persons_crud_and_scoping(client):
     assert client.get("/persons").json() == [{"id": 1, "name": "Já", "owner": True}]
-    pid = client.post("/persons", json={"name": "Matěj"}).json()["id"]
-    assert client.post("/persons", json={"name": "matěj"}).status_code == 409                   # jméno je jedinečné, bez ohledu na velikost
-    assert client.put("/persons/1", json={"name": "Jakub"}).json()["name"] == "Jakub"
+    pid = client.post("/persons", json={"name": "Osoba B"}).json()["id"]
+    assert client.post("/persons", json={"name": "osoba b"}).status_code == 409                   # jméno je jedinečné, bez ohledu na velikost
+    assert client.put("/persons/1", json={"name": "Osoba A"}).json()["name"] == "Osoba A"
     assert client.put("/persons/99", json={"name": "X"}).status_code == 404
     client.post("/labs", json={"person_id": pid, "taken_on": "2026-01-07", "analyte": "TSH", "value": 0.85, "unit": "mU/L"})
     client.post("/labs", json={"taken_on": "2026-02-01", "analyte": "Urea", "value": 5.0})       # výchozí osoba = vlastník
@@ -432,13 +432,13 @@ def test_status_counts_per_person(client):
 
 def test_seed_creates_people_and_assigns_items_by_name():
     db = connect(":memory:")
-    data = {"persons": [{"name": "Jakub", "owner": True}, {"name": "Matěj"}],
-            "labs": [{"person": "Matěj", "taken_on": "2026-01-07", "lab": "x", "analyte": "TSH", "value": 0.85},
+    data = {"persons": [{"name": "Osoba A", "owner": True}, {"name": "Osoba B"}],
+            "labs": [{"person": "Osoba B", "taken_on": "2026-01-07", "lab": "x", "analyte": "TSH", "value": 0.85},
                      {"taken_on": "2026-01-08", "lab": "x", "analyte": "Urea", "value": 5.0}],
-            "events": [{"person": "Matěj", "day": "2026-03-01", "kind": "exam", "title": "Prohlídka"}]}
+            "events": [{"person": "Osoba B", "day": "2026-03-01", "kind": "exam", "title": "Prohlídka"}]}
     packed = base64.b64encode(_json.dumps(data).encode()).decode()
     assert seed.apply_seed(db, packed)["labs_inserted"] == 2
-    assert {r["name"]: r["id"] for r in db.execute("SELECT * FROM person")} == {"Jakub": 1, "Matěj": 2}
+    assert {r["name"]: r["id"] for r in db.execute("SELECT * FROM person")} == {"Osoba A": 1, "Osoba B": 2}
     assert [(r["person_id"], r["analyte"]) for r in db.execute("SELECT * FROM lab_result ORDER BY id")] == [(2, "TSH"), (1, "Urea")]
     assert seed.apply_seed(db, packed)["labs_inserted"] == 0                                # idempotentní i s osobami
     bad = base64.b64encode(_json.dumps({"labs": [{"person": "Nikdo", "taken_on": "2026-01-01", "analyte": "X", "value": 1}]}).encode()).decode()
