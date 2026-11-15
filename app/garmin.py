@@ -265,12 +265,17 @@ def get_http() -> Iterator[httpx.Client]:
 
 @router.post("/sync")
 def sync_endpoint(
-    days: int = Query(7, ge=1, le=366, description="Kolik posledních dní stáhnout"),
+    days: int = Query(7, ge=1, le=366, description="Kolik dní stáhnout (počítáno zpět od `end`)"),
+    end: date | None = Query(None, description="Poslední stahovaný den, výchozí je dnes"),
     db: sqlite3.Connection = Depends(get_db),
     http: httpx.Client = Depends(get_http),
     settings: Settings = Depends(get_settings),
 ):
+    """Stáhne úsek [end - days + 1, end]. Historii stahuje UI po oknech (end se posouvá do minulosti),
+    aby jediný požadavek netrval dlouho a šel kdykoli přerušit a navázat."""
     if not settings.garmin_api_key:
         raise HTTPException(status_code=503, detail="GARMIN_API_KEY není nastaveno")
-    end = date.today()
-    return sync(db, GarminClient(http, settings.garmin_api_key), end - timedelta(days=days - 1), end)
+    last = end or date.today()
+    if last > date.today():
+        raise HTTPException(status_code=400, detail="end nesmí být v budoucnosti")
+    return sync(db, GarminClient(http, settings.garmin_api_key), last - timedelta(days=days - 1), last)

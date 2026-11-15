@@ -87,14 +87,14 @@ def list_events(db: sqlite3.Connection = Depends(get_db)):
 
 @router.get("/metrics")
 def list_metrics(
-    metric: str | None = None,
+    metric: list[str] | None = Query(None),
     start: date | None = Query(None, alias="from"),
     end: date | None = Query(None, alias="to"),
     db: sqlite3.Connection = Depends(get_db),
 ):
     sql, args, where = "SELECT * FROM metric_daily", [], []
     if metric:
-        where.append("metric = ?"); args.append(metric)
+        where.append("metric IN (%s)" % ",".join("?" * len(metric))); args.extend(metric)
     if start:
         where.append("day >= ?"); args.append(start.isoformat())
     if end:

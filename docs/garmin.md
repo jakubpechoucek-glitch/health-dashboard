@@ -19,8 +19,18 @@ Garmin pošle e-mail zhruba týden před vypršením klíče. Pak je potřeba vy
 
 ## Synchronizace
 
-`POST /garmin/sync?days=7` (jen přihlášený vlastník) stáhne posledních N dní (1 až 366).
-První spuštění s `days=365` je historický import.
+`POST /garmin/sync?days=7&end=2026-11-15` (jen přihlášený vlastník) stáhne N dní (1 až 366) končících dnem `end` (výchozí dnes).
+
+### Celá historie
+
+Tlačítko **Stáhnout celou historii** v aplikaci volá `/garmin/sync` opakovaně po 56denních úsecích od dneška do minulosti.
+Důvod: jeden dlouhý požadavek by na Renderu mohl vypršet a Garmin na velké rozsahy vrací chybu 500.
+
+- Stahuje se, dokud tři úseky po sobě nevrátí nic (před začátkem dat), nejvýš 40 úseků (≈ 6 let).
+- Zobrazuje průběh, jde kdykoli **zastavit** a později **navázat** (bod pro navázání je v prohlížeči, v `localStorage`).
+- Po třech chybných úsecích po sobě se zastaví, aby nebouchalo do API. Opakování je bezpečné (UPSERT).
+- Stránku při stahování nezavírej a nenech vypršet přihlášení.
+- Surové odpovědi se ukládají do `garmin_raw`, takže data jde později přepočítat bez nového stahování.
 
 | Endpoint Garminu | Úsek | Uložené metriky |
 |---|---|---|

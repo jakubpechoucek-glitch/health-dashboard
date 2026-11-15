@@ -61,6 +61,7 @@ def test_index_page_is_public_and_has_no_data(client):
 # ---------- Garmin sync (Garmin je nahrazen mock serverem, nikdy se nevolá skutečné API) ----------
 
 import httpx
+from datetime import date, timedelta
 
 from app import garmin
 
@@ -298,3 +299,17 @@ def test_delete_event(client):
     assert client.get("/events").json() == []
     assert client.delete(f"/events/{eid}").status_code == 404
     assert TestClient(app).delete("/events/1").status_code == 401
+
+
+def test_sync_window_ends_at_given_day_and_rejects_future(client, garmin_calls):
+    client.post("/garmin/sync", params={"days": 3, "end": "2026-10-10"})
+    sent = [c for c in garmin_calls if "dailysummaries" in c[1]]
+    assert len(sent) == 1                                                   # úsek ≤ 28 dní = jeden požadavek
+    future = (date.today() + timedelta(days=2)).isoformat()
+    assert client.post("/garmin/sync", params={"days": 3, "end": future}).status_code == 400
+
+
+def test_metrics_accepts_several_metrics(client, garmin_calls):
+    client.post("/garmin/sync", params={"days": 3})
+    got = {m["metric"] for m in client.get("/metrics", params=[("metric", "steps"), ("metric", "sleep_score")]).json()}
+    assert got == {"steps", "sleep_score"}

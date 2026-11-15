@@ -125,6 +125,11 @@
       </select>
     </label>
   </div>
+  <div class="bar" id="hist-radek" hidden>
+    <button id="hist">⤓ Stáhnout celou historii</button>
+    <button id="hist-stop" hidden>Zastavit</button>
+    <span class="msg" id="hist-stav" role="status"></span>
+  </div>
   <p class="msg" id="sync-stav" role="status"></p>
   <pre class="msg" id="sync-detail" style="white-space:pre-wrap;font:.8rem/1.5 ui-monospace,monospace;margin:0 0 8px"></pre>
 
@@ -135,6 +140,7 @@
       <button type="button" data-dny="30" aria-pressed="true">30 dní</button>
       <button type="button" data-dny="90" aria-pressed="false">90 dní</button>
       <button type="button" data-dny="365" aria-pressed="false">rok</button>
+      <button type="button" data-dny="1825" aria-pressed="false">5 let</button>
       <button type="button" class="vpravo" id="prepni" aria-pressed="false">Zobrazit tabulku</button>
     </div>
     <p class="legenda" id="legenda" hidden>▲ na ose = vyšetření, rozbor nebo jiná událost (najetím se zobrazí název)</p>
@@ -243,6 +249,8 @@
   const lokalniDen = (d) => d.toLocaleDateString("sv-SE");           // YYYY-MM-DD v místním čase
   const dnesni = () => new Date();
   const kratce = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric" });
+  // u dlouhých období se na ose x ukazuje měsíc a rok (jinak by nebylo poznat, o který rok jde)
+  const osaX = (den) => (stav.rozsah > 300 ? new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { month: "numeric", year: "numeric" }) : kratce(den));
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
   const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false };
@@ -277,7 +285,7 @@
   }
 
   // ---------- jeden graf ----------
-  function nakresli(karta, def, seznamDnu, hodnoty) {
+  function nakresli(karta, def, seznamDnu, hodnoty, skupiny, skupinaDne) {
     const plocha = karta.querySelector(".plocha"), tip = karta.querySelector(".tip");
     plocha.replaceChildren();
     const ma = hodnoty.filter((v) => v != null);
@@ -299,11 +307,11 @@
       svg.append(el("text", { x: o.l - 6, y: Y(t) + 4, "text-anchor": "end" }, cislo(t, os.ticks[1] - os.ticks[0] < 1 ? 1 : 0)));
     }
     const popisky = n > 1 ? [0, Math.round((n - 1) / 2), n - 1] : [0];   // osa x: začátek, střed, konec
-    popisky.forEach((i, k) => svg.append(el("text", { x: X(i), y: H - 6, "text-anchor": k === 0 && n > 1 ? "start" : k === popisky.length - 1 && n > 1 ? "end" : "middle" }, kratce(seznamDnu[i]))));
+    popisky.forEach((i, k) => svg.append(el("text", { x: X(i), y: H - 6, "text-anchor": k === 0 && n > 1 ? "start" : k === popisky.length - 1 && n > 1 ? "end" : "middle" }, osaX(seznamDnu[i]))));
 
     // události a odběry na ose x: tenká čára + trojúhelník; název se ukáže v tooltipu
     const naDni = new Map();
-    for (const u of stav.osa) { const i = seznamDnu.indexOf(u.day); if (i >= 0) (naDni.get(i) || naDni.set(i, []).get(i)).push(u.title); }
+    for (const u of stav.osa) { const i = skupinaDne.has(u.day) ? skupinaDne.get(u.day) : -1; if (i >= 0) (naDni.get(i) || naDni.set(i, []).get(i)).push(u.title); }
     for (const i of naDni.keys()) {
       const x = X(i), yb = o.t + ph;
       svg.append(el("line", { x1: x, x2: x, y1: o.t, y2: yb, stroke: "var(--axis)", "stroke-width": 1 }));
@@ -347,7 +355,8 @@
       if (def.typ === "cara" && v != null) { tecka.setAttribute("cx", x); tecka.setAttribute("cy", Y(v)); tecka.setAttribute("visibility", "visible"); }
       else tecka.setAttribute("visibility", "hidden");
       tip.replaceChildren();                           // jen textContent, nikdy innerHTML
-      const den = document.createElement("div"); den.className = "den"; den.textContent = dlouze(seznamDnu[i]);
+      const den = document.createElement("div"); den.className = "den";
+      den.textContent = skupiny[i].length > 1 ? `${kratce(skupiny[i][0])} – ${kratce(skupiny[i][skupiny[i].length - 1])} · průměr za ${skupiny[i].length} dní` : dlouze(seznamDnu[i]);
       const radek = document.createElement("div"); radek.className = "radek";
       if (v == null) radek.textContent = "bez dat";
       else {
@@ -384,7 +393,11 @@
   }
 
   function vykresliGrafy() {
-    const seznamDnu = dny(stav.rozsah), host = $("grafy");
+    // dlouhá období se kreslí po skupinách dnů (průměr), aby graf nebyl nečitelný; hlavička vždy ukazuje skutečné denní hodnoty
+    const vse = dny(stav.rozsah), host = $("grafy"), bin = Math.max(1, Math.ceil(vse.length / 150));
+    const skupiny = []; for (let i = 0; i < vse.length; i += bin) skupiny.push(vse.slice(i, i + bin));
+    const seznamDnu = skupiny.map((g) => g[0]);
+    const skupinaDne = new Map(); skupiny.forEach((g, j) => g.forEach((d) => skupinaDne.set(d, j)));
     if (!host.children.length) {
       for (const def of GRAFY) {
         const k = document.createElement("div"); k.className = "karta"; k.dataset.klic = def.klic;
@@ -393,17 +406,18 @@
       }
     }
     for (const def of GRAFY) {
-      const karta = host.querySelector(`[data-klic="${def.klic}"]`), hodnoty = hodnotyPro(def, seznamDnu);
-      const ma = hodnoty.filter((v) => v != null), hod = karta.querySelector(".hodnota"), pod = karta.querySelector(".pod");
+      const karta = host.querySelector(`[data-klic="${def.klic}"]`), denni = hodnotyPro(def, vse);
+      const hodnoty = bin === 1 ? denni : skupiny.map((g, j) => { const v = denni.slice(j * bin, j * bin + g.length).filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; });
+      const ma = denni.filter((v) => v != null), hod = karta.querySelector(".hodnota"), pod = karta.querySelector(".pod");
       hod.replaceChildren(); pod.textContent = "";
       if (ma.length) {
-        const posl = hodnoty.map((v) => v != null).lastIndexOf(true);
-        hod.append(document.createTextNode(def.fmt(hodnoty[posl])));
+        const posl = denni.map((v) => v != null).lastIndexOf(true);
+        hod.append(document.createTextNode(def.fmt(denni[posl])));
         if (def.jednotka) { const s = document.createElement("small"); s.textContent = def.jednotka; hod.append(s); }
         const prumer = ma.reduce((a, b) => a + b, 0) / ma.length;
-        pod.textContent = `${posl === hodnoty.length - 1 ? "dnes" : "k " + kratce(seznamDnu[posl])} · průměr ${stav.rozsah} dní ${def.fmt(prumer)}${def.jednotka ? " " + def.jednotka : ""}`;
+        pod.textContent = `${posl === denni.length - 1 ? "dnes" : "k " + kratce(vse[posl])} · průměr ${stav.rozsah} dní ${def.fmt(prumer)}${def.jednotka ? " " + def.jednotka : ""}`;
       }
-      nakresli(karta, def, seznamDnu, hodnoty);
+      nakresli(karta, def, seznamDnu, hodnoty, skupiny, skupinaDne);
     }
   }
 
@@ -534,22 +548,82 @@
     finally { tl.disabled = false; }
   });
 
+  const nactiMetriky = () => {                      // jen metriky, které se kreslí, a jen za zvolené období
+    const q = new URLSearchParams({ from: dny(stav.rozsah)[0] });
+    for (const g of GRAFY) q.append("metric", g.klic);
+    return api("/metrics?" + q);
+  };
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
-      const od = dny(365)[0];
-      const [osa, metriky, rozbory] = await Promise.all([api("/timeline"), api("/metrics?from=" + od), api("/labs")]);
+      const [osa, metriky, rozbory] = await Promise.all([api("/timeline"), nactiMetriky(), api("/labs")]);
       stav.metriky = metriky; stav.osa = osa;
-      $("stav").textContent = ""; $("ovladani").hidden = false;
+      $("stav").textContent = ""; $("ovladani").hidden = false; $("hist-radek").hidden = false;
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
     } finally { $("grafy").classList.remove("nacitam"); }
   }
+
+
+  // ---------- celá historie z Garminu: po úsecích, s průběhem, přerušitelné a navazující ----------
+  const OKNO = 56;            // dní na jeden požadavek (záložní stahování po dnech je omezené na 60 dní)
+  const MAX_OKEN = 40;        // ≈ 6 let zpět
+  const posun = (den, n) => { const d = new Date(den + "T12:00:00"); d.setDate(d.getDate() + n); return lokalniDen(d); };
+  const pockej = (ms) => new Promise((r) => setTimeout(r, ms));
+  const ulozit = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} };
+  const nacist = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  let historie = null;
+
+  function popisTlacitka() { const u = nacist("hist-end"); $("hist").textContent = u ? `⤓ Pokračovat ve stahování historie (od ${dlouzeDatum(u)})` : "⤓ Stáhnout celou historii"; }
+  popisTlacitka();
+
+  $("hist-stop").addEventListener("click", () => { if (historie) historie.stop = true; $("hist-stav").textContent = "Zastavuji po dokončení rozdělaného úseku…"; });
+  $("hist").addEventListener("click", async () => {
+    if (historie) return;
+    let end = lokalniDen(new Date());
+    const ulozeny = nacist("hist-end");
+    if (ulozeny && confirm(`Minule stahování skončilo u ${dlouzeDatum(ulozeny)}. Pokračovat odtud? (Zrušit = začít znovu od dneška)`)) end = ulozeny;
+    else if (!ulozeny && !confirm("Stáhnout celou historii z Garminu? Stahuje se po dvouměsíčních úsecích a může to trvat několik minut. Stránku nezavírej, stahování lze kdykoli zastavit a později navázat.")) return;
+
+    historie = { stop: false }; $("hist").hidden = true; $("hist-stop").hidden = false; $("sync").disabled = true;
+    let celkem = 0, prazdne = 0, chybne = 0, okno = 0, chyby = [], duvod = "";
+    try {
+      while (okno < MAX_OKEN) {
+        if (historie.stop) { duvod = "zastaveno"; break; }
+        okno++; const od = posun(end, -(OKNO - 1));
+        $("hist-stav").textContent = `Stahuji úsek ${okno}: ${dlouzeDatum(od)} – ${dlouzeDatum(end)} · uloženo zatím ${celkem} hodnot`;
+        const r = await api(`/garmin/sync?days=${OKNO}&end=${end}`, { method: "POST" });
+        celkem += r.metrics_stored;
+        if (r.errors.length) { chybne++; chyby.push(`${od}..${end}: ${r.errors.join("; ")}`); } else chybne = 0;
+        prazdne = r.metrics_stored === 0 && !r.errors.length ? prazdne + 1 : 0;
+        end = posun(od, -1); ulozit("hist-end", end);
+        if (prazdne >= 3) { duvod = "hotovo"; break; }                 // tři prázdné úseky po sobě = před začátkem dat
+        if (chybne >= 3) { duvod = "chyby"; break; }
+        await pockej(400);
+      }
+      if (!duvod) duvod = "limit";
+    } catch (e) {
+      duvod = e.status === 401 ? "prihlaseni" : "chyba"; chyby.push(e.message);
+      if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); }
+    } finally {
+      historie = null; $("hist").hidden = false; $("hist-stop").hidden = true; $("sync").disabled = false;
+      if (duvod === "hotovo" || duvod === "limit") ulozit("hist-end", null);
+      popisTlacitka();
+    }
+    const konec = { hotovo: "Hotovo, starší data už Garmin nemá.", limit: "Hotovo (dosažen limit 6 let).", zastaveno: "Zastaveno, můžeš později navázat.",
+      chyby: "Zastaveno po třech chybných úsecích za sebou, můžeš později navázat.", prihlaseni: "Přihlášení vypršelo, po novém přihlášení navaž tlačítkem.", chyba: "Stahování se přerušilo, můžeš navázat." }[duvod];
+    $("hist-stav").textContent = `${konec} Uloženo ${celkem} hodnot.` + (chyby.length ? ` Problémy: ${chyby.join(" | ")}` : "");
+    $("hist-stav").className = "msg " + (chyby.length ? "err" : "ok");
+    try { await nacti(); } catch (e) {}
+  });
 
   // filtr období + přepínač graf/tabulka
   document.querySelectorAll(".filtr [data-dny]").forEach((b) => b.addEventListener("click", () => {
     stav.rozsah = +b.dataset.dny;
     document.querySelectorAll(".filtr [data-dny]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    vykresliVse();
+    $("grafy").classList.add("nacitam");
+    nactiMetriky().then((m) => { stav.metriky = m; vykresliVse(); })
+      .catch((e) => { if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); } else $("stav").textContent = e.message; })
+      .finally(() => $("grafy").classList.remove("nacitam"));
   }));
   $("prepni").addEventListener("click", () => {
     stav.tabulka = !stav.tabulka;
