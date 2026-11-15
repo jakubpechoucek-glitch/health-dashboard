@@ -96,6 +96,14 @@
   .banner { border:1px solid var(--err); color:var(--err); border-radius:12px; padding:10px 14px; margin:10px 0; background:var(--surface-1); }
   .banner a { font-weight:700; }
 
+  /* výběr osoby */
+  .osoby { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 4px; }
+  .osoby .nazev { color:var(--text-secondary); margin-right:2px; }
+  .osoby .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .osoby .chips button[aria-pressed="true"] { font-weight:700; border-color:var(--text); }
+  .osoby .chips button[aria-pressed="true"]::before { content:"✓ "; }
+  .osoba-forma { display:flex; flex-wrap:wrap; gap:8px; align-items:center; width:100%; }
+  .osoba-forma input { font:inherit; padding:8px 14px; border-radius:999px; border:1px solid var(--line); background:var(--tile); color:var(--text); min-width:0; }
   /* záložky */
   .zalozky { display:flex; flex-wrap:wrap; gap:6px; border-bottom:1px solid var(--line); margin:14px 0 16px; }
   .zalozky [role="tab"] { border:0; border-radius:10px 10px 0 0; background:transparent; padding:10px 16px; font-weight:600; color:var(--text-secondary); margin-bottom:-1px; border-bottom:3px solid transparent; }
@@ -162,6 +170,19 @@
   <div class="banner" id="banner" role="alert" hidden></div>
   <p class="msg" id="stav">Načítám…</p>
 
+  <div class="osoby" id="osoby" role="group" aria-label="Osoba, jejíž zdraví se zobrazuje" hidden>
+    <span class="nazev">Osoba</span>
+    <span class="chips" id="osoby-chips"></span>
+    <button type="button" id="osoba-pridat">＋ Přidat osobu</button>
+    <button type="button" id="osoba-prejmenovat" aria-label="Přejmenovat vybranou osobu" title="Přejmenovat vybranou osobu">✎</button>
+    <form id="osoba-forma" class="osoba-forma" hidden>
+      <input id="osoba-jmeno" type="text" maxlength="60" required aria-label="Jméno osoby" placeholder="Jméno">
+      <button class="primary" type="submit" id="osoba-uloz">Přidat</button>
+      <button type="button" id="osoba-zrusit">Zrušit</button>
+      <span class="msg" id="osoba-stav" role="status"></span>
+    </form>
+  </div>
+
   <div class="zalozky" role="tablist" aria-label="Sekce stránky">
     <button type="button" role="tab" id="tab-garmin" aria-controls="panel-garmin" aria-selected="true">Garmin</button>
     <button type="button" role="tab" id="tab-rozbory" aria-controls="panel-rozbory" aria-selected="false" tabindex="-1">Krevní rozbory</button>
@@ -169,6 +190,7 @@
   </div>
 
   <div role="tabpanel" id="panel-garmin" aria-labelledby="tab-garmin" tabindex="0">
+    <p class="msg" id="garmin-nepatri" hidden>Garmin je napojený jen na vlastníka aplikace. U vybrané osoby tu žádná data nejsou.</p>
   <div class="bar" id="ovladani" hidden>
     <button class="primary" id="sync">⟳ Synchronizovat Garmin</button>
     <label>za posledních
@@ -335,7 +357,7 @@
   const osaX = (den) => (stav.rozsah > 300 ? new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { month: "numeric", year: "numeric" }) : kratce(den));
   const dlouze = (den) => new Date(den + "T12:00:00").toLocaleDateString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", year: "numeric" });
 
-  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set() };
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set(), osoby: [], osoba: 1 };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -518,7 +540,7 @@
     if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
   }
 
-  function vykresliVse() { $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); }
+  function vykresliVse() { if (!jeVlastnik()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); }
 
   const DRUHY = { exam: "Vyšetření", genetics: "Genetika", medication: "Léky", other: "Jiné" };
   function vykresliOsu(data) {
@@ -549,19 +571,72 @@
     const tl = e.submitter || e.target.querySelector("button"); tl.disabled = true;
     try {
       await api("/events", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day: $("u-den").value, kind: $("u-druh").value, title: $("u-nazev").value.trim(), note: $("u-pozn").value.trim() }) });
+        body: JSON.stringify({ person_id: stav.osoba, day: $("u-den").value, kind: $("u-druh").value, title: $("u-nazev").value.trim(), note: $("u-pozn").value.trim() }) });
       $("u-nazev").value = ""; $("u-pozn").value = ""; $("u-stav").textContent = "Přidáno."; $("u-stav").className = "msg ok";
       await nacti();
     } catch (err) { $("u-stav").textContent = "Uložení se nepodařilo: " + err.message; $("u-stav").className = "msg err"; }
     finally { tl.disabled = false; }
   });
 
+
+  // ---------- osoby: přepínač pro rozbory a události ----------
+  async function nactiOsoby() {
+    stav.osoby = await api("/persons");
+    const ulozena = +nacist("osoba");
+    if (stav.osoby.some((o) => o.id === ulozena)) stav.osoba = ulozena;
+    else if (!stav.osoby.some((o) => o.id === stav.osoba)) stav.osoba = 1;
+    vykresliOsoby();
+  }
+  function vykresliOsoby() {
+    $("osoby").hidden = false; const host = $("osoby-chips"); host.replaceChildren();
+    for (const o of stav.osoby) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = o.name; b.setAttribute("aria-pressed", String(o.id === stav.osoba));
+      b.addEventListener("click", () => vyberOsobu(o.id)); host.append(b);
+    }
+  }
+  async function vyberOsobu(id) {
+    if (id === stav.osoba) return;
+    stav.osoba = id; ulozit("osoba", String(id)); zavriNahled(); $("pdf-stav").textContent = "";
+    stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = [];
+    vykresliOsoby();
+    if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");
+    try { await nacti(); } catch (e) { if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); } else $("stav").textContent = e.message; }
+  }
+  let osobaRezim = "pridat";
+  function otevriFormuOsoby(rezim) {
+    osobaRezim = rezim; $("osoba-forma").hidden = false; $("osoba-stav").textContent = "";
+    $("osoba-uloz").textContent = rezim === "pridat" ? "Přidat" : "Uložit";
+    $("osoba-jmeno").value = rezim === "pridat" ? "" : osobaJmeno(); $("osoba-jmeno").focus();
+  }
+  $("osoba-pridat").addEventListener("click", () => otevriFormuOsoby("pridat"));
+  $("osoba-prejmenovat").addEventListener("click", () => otevriFormuOsoby("prejmenovat"));
+  $("osoba-zrusit").addEventListener("click", () => { $("osoba-forma").hidden = true; });
+  $("osoba-forma").addEventListener("submit", async (e) => {
+    e.preventDefault(); const jmeno = $("osoba-jmeno").value.trim(); if (!jmeno) return;
+    const tl = $("osoba-uloz"); tl.disabled = true;
+    try {
+      const hlavicky = { "Content-Type": "application/json" }, body = JSON.stringify({ name: jmeno });
+      if (osobaRezim === "pridat") {
+        const o = await api("/persons", { method: "POST", headers: hlavicky, body });
+        stav.osoby = await api("/persons"); $("osoba-forma").hidden = true; await vyberOsobu(o.id); vykresliOsoby();
+      } else {
+        await api("/persons/" + stav.osoba, { method: "PUT", headers: hlavicky, body });
+        stav.osoby = await api("/persons"); $("osoba-forma").hidden = true; vykresliOsoby();
+      }
+    } catch (err) { $("osoba-stav").textContent = err.message; $("osoba-stav").className = "msg err"; }
+    finally { tl.disabled = false; }
+  });
+
   // ---------- krevní rozbory: přehled všech ukazatelů ----------
+  const jeVlastnik = () => stav.osoba === 1;
+  const osobaJmeno = () => (stav.osoby.find((o) => o.id === stav.osoba) || { name: "" }).name;
   const cisloLab = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });        // bez zbytečných nul: 123, 5,4, 0,995
   const mimoRozsah = (r) => r.value != null && ((r.ref_low != null && r.value < r.ref_low) || (r.ref_high != null && r.value > r.ref_high));
   const smer = (r) => (r.ref_high != null && r.value > r.ref_high ? " ↑" : " ↓");        // šipka, aby barva nebyla jediný signál
   const refText = (r) => (r.ref_low == null && r.ref_high == null ? "" : `${r.ref_low != null ? cisloLab(r.ref_low) : "…"} – ${r.ref_high != null ? cisloLab(r.ref_high) : "…"}`);
-  const hodnotaText = (r) => (r.value != null ? cisloLab(r.value) : r.value_text);
+  const hodnotaText = (r) => (r.value != null ? (r.note === "<" || r.note === ">" ? r.note : "") + cisloLab(r.value) : r.value_text);
+  // jednotky z různých laboratoří se píšou různě (µ/u, ˆ/^, mezery); porovnáváme je sjednocené
+  const normJednotka = (u) => { const x = (u || "").replace(/[µμ]/g, "u").replace(/ˆ/g, "^").replace(/\s+/g, ""); return x === "1" ? "" : x === "fl" ? "fL" : x; };
   const dlouzeDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
 
   // Seskupení a interpretace. Každý ukazatel se čte jinak: u cholesterolu je lepší méně, u HDL více, u většiny je cílem rozmezí.
@@ -572,8 +647,12 @@
     ["Játra a bílkoviny", /^(Bilirubin celk\.|ALT|AST|GGT|ALP|FIB-4 index|Celk\.bílkovina)$/],
     ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
     ["Cukr", /^Glukóza$/],
-    ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW)\b/],
+    ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW|MPV|PDW|Normoblasty)\b/],
+    ["Krevní obraz: diferenciál", /^(Neutrofily|Eozinofily|Bazofily|Lymfocyty|Monocyty|Nezralé granulocyty)/],
     ["Prostata", /^PSA$/],
+    ["Štítná žláza", /^(TSH|fT4)$/],
+    ["Vitamíny a minerály", /^(25-OH vitamin D|Mg - hořčík)$/],
+    ["Slinivka a trávení", /^Lipáza$/],
   ];
 
   // ---------- vysvětlivky ukazatelů (obecná informace pro orientaci, ne výklad výsledku) ----------
@@ -626,6 +705,33 @@
     "Bakterie (moč, sediment)": { jmeno: "Bakterie v močovém sedimentu", co: "Bakterie nalezené mikroskopicky. Při nízkém počtu může jít o kontaminaci vzorku. Hodnotí se s leukocyty a příznaky.", vyssi: "možná infekce močových cest" },
     "Hlen (moč, sediment)": { jmeno: "Hlen v močovém sedimentu", co: "Tvoří se ve sliznici močových cest. V malém množství je běžným nálezem a obvykle nemá význam." },
   };
+
+  // Doplňky pro ukazatele, které se objevují v listech dalších laboratoří (Unilabs, EUC).
+  Object.assign(VYSVETLENI, {
+    "TSH": { jmeno: "TSH (tyreotropin)", co: "Hormon hypofýzy, který řídí štítnou žlázu. Je to základní vyšetření funkce štítné žlázy.", vyssi: "snížená funkce štítné žlázy (hypotyreóza)", nizsi: "zvýšená funkce štítné žlázy (hypertyreóza), některé léky" },
+    "fT4": { jmeno: "fT4 (volný tyroxin)", co: "Hormon štítné žlázy ve volné, účinné formě. Hodnotí se spolu s TSH.", vyssi: "zvýšená funkce štítné žlázy", nizsi: "snížená funkce štítné žlázy" },
+    "Mg - hořčík": { jmeno: "Hořčík (magnesium)", co: "Minerál důležitý pro svaly, nervy, srdce a energetický metabolismus.", vyssi: "snížená funkce ledvin, některé léky a doplňky", nizsi: "nedostatečný příjem, ztráty (průjem, diuretika, alkohol), některá onemocnění" },
+    "Lipáza": { jmeno: "Lipáza", co: "Enzym slinivky břišní, který štěpí tuky. Jeho zvýšení se používá hlavně při podezření na onemocnění slinivky.", vyssi: "zánět slinivky břišní, onemocnění žlučových cest, snížená funkce ledvin", nizsi: "obvykle bez významu" },
+    "25-OH vitamin D": { jmeno: "25-OH vitamin D (kalcidiol)", co: "Zásobní forma vitaminu D, ukazuje, kolik ho má tělo k dispozici. Vitamin D je důležitý pro kosti, svaly a imunitu. Tvoří se v kůži na slunci a přijímá se stravou a doplňky.", vyssi: "předávkování doplňky", nizsi: "nedostatek: málo slunce (zejména v zimě), strava, některá onemocnění; řeší se s lékařem" },
+    "MPV": { jmeno: "MPV (střední objem trombocytů)", co: "Průměrná velikost krevních destiček. Hodnotí se spolu s jejich počtem.", vyssi: "mladší, větší destičky při zvýšené tvorbě", nizsi: "menší destičky" },
+    "PDW": { jmeno: "PDW (šíře distribuce velikosti trombocytů)", co: "Ukazuje, jak moc se krevní destičky liší velikostí. Hodnotí se spolu s počtem a MPV." },
+    "Normoblasty": { jmeno: "Normoblasty (jaderné červené krvinky)", co: "Nezralé červené krvinky s jádrem, které se v krvi zdravého dospělého téměř nevyskytují.", vyssi: "zvýšená zátěž krvetvorby (posoudí lékař)" },
+    "Normoblasty abs. počet": { jmeno: "Normoblasty, absolutní počet", co: "Počet nezralých červených krvinek s jádrem v litru krve. Za normálních okolností téměř nulový.", vyssi: "zvýšená zátěž krvetvorby (posoudí lékař)" },
+    "Epitelie dlaždicovité (moč, sediment)": { jmeno: "Dlaždicovité epitelie v močovém sedimentu", co: "Buňky pokrývající povrch těla a vnější část močových cest. V moči se běžně vyskytují, často jako příměs při odběru." },
+    "MS bez patologie": { jmeno: "Močový sediment bez patologie", co: "Hodnocení laboratoře: mikroskopické vyšetření moči neukázalo nic abnormálního." },
+  });
+  const DIFER = {
+    "Neutrofily": ["Neutrofily", "Druh bílých krvinek, hlavní obrana proti bakteriím.", "bakteriální infekce, zánět, stres, kouření", "virové infekce, některé léky"],
+    "Eozinofily": ["Eozinofily", "Druh bílých krvinek zapojený do alergických reakcí a obrany proti parazitům.", "alergie, parazitární infekce, některé kožní a plicní nemoci", "obvykle bez významu"],
+    "Bazofily": ["Bazofily", "Nejméně početný druh bílých krvinek, podílí se na alergických reakcích.", "alergické reakce, některé poruchy krvetvorby", "obvykle bez významu"],
+    "Lymfocyty": ["Lymfocyty", "Druh bílých krvinek, obrana proti virům a tvorba protilátek.", "virové infekce, některá chronická onemocnění", "stres, některé léky a infekce"],
+    "Monocyty": ["Monocyty", "Druh bílých krvinek, které pohlcují mikroby a zbytky buněk.", "infekce, zánět, období zotavování", "obvykle bez významu"],
+    "Nezralé granulocyty": ["Nezralé granulocyty", "Nezralé formy bílých krvinek, které se při zvýšené potřebě dostávají do krve dřív.", "výrazný zánět nebo infekce, stres, těhotenství", "obvykle bez významu"],
+  };
+  for (const [zaklad, [jmeno, co, vyssi, nizsi]] of Object.entries(DIFER)) {
+    VYSVETLENI[zaklad] = { jmeno: `${jmeno} (podíl z leukocytů)`, co, vyssi, nizsi };
+    for (const nazev of [`${zaklad} abs. počet`, `${zaklad} abs.počet`]) VYSVETLENI[nazev] = { jmeno: `${jmeno} (absolutní počet)`, co, vyssi, nizsi };
+  }
   const skupinaPro = (a) => (SKUPINY.find(([, re]) => re.test(a)) || ["Ostatní"])[0];
   const MODY = { rozmezi: "v rozmezí je v pořádku", nizsi: "nižší je lepší", vyssi: "vyšší je lepší", nehodnotit: "nehodnotit změnu" };
   const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index)$/.test(a) ? "nizsi"
@@ -637,12 +743,16 @@
 
   // Porovnání dvou výsledků jednoho ukazatele podle zvolené interpretace.
   function posoudit(a, stare, nove) {
-    if (!nove) return { verdikt: "nic" };
+    if (!nove && !stare) return { verdikt: "mimo" };
+    if (!nove) return { verdikt: "jenStare" };                                  // ukazatel byl změřen jen při starším odběru
     if (!stare) return { verdikt: "nic", zona: nove.value != null ? zona(nove.value, nove.ref_low, nove.ref_high) : null };
     if (nove.value == null || stare.value == null) {                          // kvalitativní: neg, +, G1
+      const [text, cislo] = nove.value == null ? [nove, stare] : [stare, nove];
+      if (text.value == null && cislo.value != null && text.value_text === "neg" && (["<"].includes(cislo.note) || zona(cislo.value, cislo.ref_low, cislo.ref_high) === 0)) return { verdikt: "stejne" };   // laboratoře zapisují „negativní“ různě
       return { verdikt: hodnotaText(stare) === hodnotaText(nove) ? "stejne" : "zmena" };
     }
-    if (stare.unit && nove.unit && stare.unit !== nove.unit) return { verdikt: "jednotky" };       // hodnoty v různých jednotkách nelze porovnat
+    if (normJednotka(stare.unit) && normJednotka(nove.unit) && normJednotka(stare.unit) !== normJednotka(nove.unit)) return { verdikt: "jednotky" };   // různé jednotky nelze porovnat
+    if (["<", ">"].includes(stare.note) || ["<", ">"].includes(nove.note)) return { verdikt: "bez" };                          // „<3“ není přesná hodnota
     const lo = nove.ref_low ?? stare.ref_low, hi = nove.ref_high ?? stare.ref_high, mod = modPro(a.nazev);
     const d = nove.value - stare.value, sirka = lo != null && hi != null ? hi - lo : Math.abs(stare.value) || 1;
     const zN = zona(nove.value, lo, hi), zS = zona(stare.value, lo, hi);
@@ -657,7 +767,7 @@
     else r.verdikt = vzdalenost(nove.value, lo, hi) < vzdalenost(stare.value, lo, hi) ? "lepsi" : "horsi";   // oba venku: blíž k rozmezí = lépe
     return r;
   }
-  const VERDIKT = { lepsi: ["✓", "zlepšení"], horsi: ["⚠", "zhoršení"], vrozmezi: ["✓", "v rozmezí"], stejne: ["=", "beze změny"], bez: ["–", "bez hodnocení"], zmena: ["⚠", "změna"], nic: ["•", "první výsledek"], jednotky: ["≠", "jiná jednotka v listech"] };
+  const VERDIKT = { lepsi: ["✓", "zlepšení"], horsi: ["⚠", "zhoršení"], vrozmezi: ["✓", "v rozmezí"], stejne: ["=", "beze změny"], bez: ["–", "bez hodnocení"], zmena: ["⚠", "změna"], nic: ["•", "první výsledek"], jednotky: ["≠", "jiná jednotka v listech"], jenStare: ["•", "jen starší výsledek"], mimo: ["•", "mimo porovnávané odběry"] };
 
   // Rozmezí jako pruh: kde leží výsledky vůči referenčním mezím a kam se hodnota posunula.
   function kresliRozmezi(host, a, stare, nove, ostatni) {
@@ -759,7 +869,7 @@
     if (ref && ref.value != null) { row.append(hl, graf); kresliRozmezi(graf, a, a.stare, a.nove, a.ostatni); }
     else {                                                                         // kvalitativní výsledek: text místo pruhu
       graf.className = "uk-graf uk-text";
-      graf.textContent = a.stare ? `${hodnotaText(a.stare)} → ${a.nove ? hodnotaText(a.nove) : "–"}` : (a.nove ? hodnotaText(a.nove) : "–");
+      graf.textContent = a.stare && a.nove ? `${hodnotaText(a.stare)} → ${hodnotaText(a.nove)}` : a.nove ? hodnotaText(a.nove) : a.stare ? hodnotaText(a.stare) : "bez výsledku v porovnávaných odběrech";
       row.append(hl, graf);
     }
 
@@ -771,10 +881,11 @@
       zm.append(sh);
     }
     const [ikona, text] = VERDIKT[p.verdikt]; const chip = document.createElement("span"); chip.className = "verdikt v-" + p.verdikt; chip.textContent = `${ikona} ${text}`; zm.append(chip);
-    if (a.nove && a.nove.value != null) {
-      const z = document.createElement("div"); z.className = "uk-zona" + (a.mimo ? " mimo" : "");
-      const zn = zona(a.nove.value, a.nove.ref_low, a.nove.ref_high), rt = refText(a.nove);
-      z.textContent = (zn > 0 ? "↑ nad rozmezím" : zn < 0 ? "↓ pod rozmezím" : rt ? "✓ v rozmezí" : "bez rozmezí") + (rt ? ` (${rt})` : "");
+    const zr = a.nove || a.stare;
+    if (zr && zr.value != null) {
+      const z = document.createElement("div"); z.className = "uk-zona" + (mimoRozsah(zr) ? " mimo" : "");
+      const zn = zona(zr.value, zr.ref_low, zr.ref_high), rt = refText(zr);
+      z.textContent = (zn > 0 ? "↑ nad rozmezím" : zn < 0 ? "↓ pod rozmezím" : rt ? "✓ v rozmezí" : "bez rozmezí") + (rt ? ` (${rt})` : "") + (zr === a.stare && !a.nove ? ", starší výsledek" : "");
       zm.append(z);
     }
     row.append(zm, det);
@@ -881,8 +992,9 @@
     $("pdf-stav").textContent = "Čtu PDF…"; $("pdf-stav").className = "msg";
     try {
       const p = await api("/labs/import/preview", { method: "POST", headers: { "Content-Type": "application/pdf" }, body: f });
-      nahled = p;
-      $("nahled-nadpis").textContent = `Náhled: odběr ${dlouzeDatum(p.taken_on)}, ${p.results.length} výsledků`;
+      nahled = { ...p, osoba: stav.osoba };                          // výsledky se uloží té osobě, pro kterou byl náhled otevřen
+      const datumy = [...new Set(p.results.map((r) => r.taken_on || p.taken_on))].sort();
+      $("nahled-nadpis").textContent = `Náhled pro: ${osobaJmeno()} · odběr ${datumy.map(dlouzeDatum).join(", ")} · ${p.results.length} výsledků · ${p.lab}`;
       const mimo = p.results.filter(mimoRozsah).length;
       $("nahled-pozn").textContent = `${mimo} mimo referenční meze.` + (p.unparsed_rows.length ? ` Nepřečtené řádky (${p.unparsed_rows.length}): ${p.unparsed_rows.map((x) => x.replace(/\s+/g, " ")).join(" | ")}` : "") + " Zkontroluj hodnoty a potvrď uložení.";
       const tab = $("nahled-tab"); tab.replaceChildren();
@@ -904,9 +1016,9 @@
     if (!nahled) return;
     const tl = $("nahled-ulozit"); tl.disabled = true;
     try {
-      const items = nahled.results.map((r) => ({ ...r, taken_on: nahled.taken_on, lab: nahled.lab }));
+      const items = nahled.results.map((r) => ({ ...r, person_id: nahled.osoba, taken_on: r.taken_on || nahled.taken_on, lab: nahled.lab }));
       const r = await api("/labs/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
-      zavriNahled(); $("pdf-stav").textContent = `Uloženo ${r.inserted} výsledků` + (r.skipped ? `, ${r.skipped} už v databázi bylo.` : "."); $("pdf-stav").className = "msg ok";
+      zavriNahled(); $("pdf-stav").textContent = `Uloženo ${r.inserted} výsledků (${osobaJmeno()})` + (r.skipped ? `, ${r.skipped} už v databázi bylo.` : "."); $("pdf-stav").className = "msg ok";
       await nacti();
     } catch (err) { $("pdf-stav").textContent = "Uložení se nepodařilo: " + err.message; $("pdf-stav").className = "msg err"; }
     finally { tl.disabled = false; }
@@ -924,7 +1036,7 @@
     const garmin = st.metric_days ? `${st.metric_days} dní (${dlouzeDatum(st.first_metric_day)} – ${dlouzeDatum(st.last_metric_day)})` : "zatím nic";
     const t = $("uloziste-text");
     t.textContent = (st.persistent_disk ? "✓ Data jsou uložená na trvalém disku a po novém nasazení aplikace zůstanou. " : "⚠ Databáze neleží na samostatném disku, po novém nasazení by se data smazala. ")
-      + `Rozbory: ${st.labs} hodnot z ${st.lab_days} odběrů · Garmin: ${garmin} · události: ${st.events}${kb}.`;
+      + `Rozbory: ${(st.persons || []).filter((o) => o.labs).map((o) => `${o.name} ${o.labs} hodnot z ${o.lab_days} odběrů`).join(", ") || "zatím žádné"} · Garmin: ${garmin} · události: ${st.events}${kb}.`;
     t.className = "msg " + (st.persistent_disk ? "" : "err");
   }
   $("zaloha").addEventListener("click", async () => {
@@ -944,11 +1056,14 @@
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
-      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline"), nactiMetriky(), api("/labs"), api("/labs/settings").catch(() => ({}))]);
+      if (!stav.osoby.length) await nactiOsoby();
+      const q = "?person_id=" + stav.osoba;
+      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), jeVlastnik() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
       stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
-      $("stav").textContent = ""; $("ovladani").hidden = false; $("hist-radek").hidden = false;
+      $("stav").textContent = ""; $("ovladani").hidden = !jeVlastnik(); $("hist-radek").hidden = !jeVlastnik(); $("garmin-nepatri").hidden = jeVlastnik();
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
+      if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");     // Garmin patří jen vlastníkovi
       api("/status").then(vykresliStav).catch(() => {});
     } finally { $("grafy").classList.remove("nacitam"); }
   }

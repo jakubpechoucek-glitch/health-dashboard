@@ -37,6 +37,13 @@ def status(db: sqlite3.Connection = Depends(get_db), settings: Settings = Depend
         "first_metric_day": one("SELECT MIN(day) FROM metric_daily"),
         "last_metric_day": one("SELECT MAX(day) FROM metric_daily"),
         "events": one("SELECT COUNT(*) FROM health_event"),
+        "persons": [
+            {"id": r["id"], "name": r["name"],
+             "labs": db.execute("SELECT COUNT(*) FROM lab_result WHERE person_id = ?", (r["id"],)).fetchone()[0],
+             "lab_days": db.execute("SELECT COUNT(DISTINCT taken_on) FROM lab_result WHERE person_id = ?", (r["id"],)).fetchone()[0],
+             "events": db.execute("SELECT COUNT(*) FROM health_event WHERE person_id = ?", (r["id"],)).fetchone()[0]}
+            for r in db.execute("SELECT id, name FROM person ORDER BY id")
+        ],
     }
 
 

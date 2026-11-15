@@ -1,13 +1,25 @@
 # Krevní rozbory
 
+## Osoby
+
+Aplikace umí sledovat víc lidí (rodinu). Nad záložkami je přepínač **Osoba**: Rozbory a Události se zobrazují vždy pro vybranou osobu,
+import PDF ukládá výsledky té osobě, pro kterou je přepínač právě nastavený (náhled to píše do nadpisu, aby se nepletli).
+**Garmin patří jen vlastníkovi** (osoba 1), u ostatních se místo něj zobrazí upozornění. Osoby se přidávají a přejmenovávají přímo nad záložkami
+(`POST /persons`, `PUT /persons/{id}`). Vybraná osoba se pamatuje v prohlížeči. Interpretace ukazatelů (viz níže) je společná pro všechny osoby.
+Ukazatel, který daná osoba nemá, se jí v přehledu vůbec nezobrazí.
+
+
 ## Import z PDF
 
 V sekci **Krevní rozbory** nahraješ PDF výsledkového listu. Server z něj vyčte hodnoty, jednotky a
 referenční meze a ukáže **náhled**. Uloží se až po tvém potvrzení. PDF se nikam neukládá.
 
 - Čtení textu zajišťuje `pdftotext -layout` (balíček `poppler-utils`, je v `Dockerfile`).
-- Podporovaná jsou dvě rozložení laboratorního systému SmartMEDIX: „Výsledkový list“ (hodnota, pak meze)
-  a „Laboratorní výsledky pacienta“ (meze, pak hodnota). Parser je v `app/labs.py`.
+- Podporovaná jsou čtyři rozložení: SmartMEDIX „Výsledkový list“ a „Laboratorní výsledky pacienta“, EUC Lab „Opis výsledku“ (každý řádek má vlastní datum odběru)
+  a Unilabs „Výsledkový list“. Parser je v `app/labparse.py`.
+- Výsledky z různých laboratoří se **sjednotí na společné názvy a jednotky**, aby šly porovnat v čase: např. `S_Kreatinin` (Unilabs) a `Kreatinin` (EUC) je jeden ukazatel,
+  `µmol/L` a `umol/L` jedna jednotka, měrná hmotnost moči se přepočítá z kg/m3 na g/cm3, nula na močovém proužku (`arb.j.`) je `neg`. Diakritika se normalizuje (NFC).
+  Neznámý ukazatel zůstane pod svým názvem a v přehledu se zařadí do skupiny Ostatní.
 - Čte se jen **datum odběru a řádky s výsledky**. Jméno pacienta, číslo pojištěnce ani jiné identifikátory
   se nezpracovávají ani neukládají.
 - Řádky, které parser nepřečte (např. textová poznámka bez hodnoty), se v náhledu vypíšou.

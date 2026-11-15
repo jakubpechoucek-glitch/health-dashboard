@@ -19,8 +19,16 @@ CREATE TABLE IF NOT EXISTS metric_daily (
     PRIMARY KEY (source, metric, day)
 );
 
+-- Osoby, jejichž zdraví se sleduje. Osoba 1 je vlastník (Garmin patří jemu).
+CREATE TABLE IF NOT EXISTS person (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+INSERT OR IGNORE INTO person (id, name) VALUES (1, 'Já');
+
 CREATE TABLE IF NOT EXISTS lab_result (
     id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
     taken_on TEXT NOT NULL,     -- YYYY-MM-DD
     lab TEXT NOT NULL DEFAULT '',
     analyte TEXT NOT NULL,      -- např. "Ferritin"
@@ -42,6 +50,7 @@ CREATE TABLE IF NOT EXISTS lab_setting (
 -- Události na časové ose: kolonoskopie, výsledek genetiky, změna léků...
 CREATE TABLE IF NOT EXISTS health_event (
     id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
     day TEXT NOT NULL,
     kind TEXT NOT NULL,         -- exam | genetics | medication | other
     title TEXT NOT NULL,
@@ -66,7 +75,11 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 SELECT id, taken_on, lab, analyte, value, unit, ref_low, ref_high, note FROM lab_result_old;
             DROP TABLE lab_result_old;
         """)
-    conn.execute("CREATE INDEX IF NOT EXISTS ix_lab_analyte_day ON lab_result (analyte, taken_on)")
+    for table in ("lab_result", "health_event"):               # starší databáze nemají osobu: vše patří vlastníkovi (osoba 1)
+        if "person_id" not in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN person_id INTEGER NOT NULL DEFAULT 1")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_lab_person ON lab_result (person_id, analyte, taken_on)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_event_person ON health_event (person_id, day)")
     conn.commit()
 
 

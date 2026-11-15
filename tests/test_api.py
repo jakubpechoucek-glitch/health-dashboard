@@ -221,7 +221,7 @@ def test_parse_layout_a():
     assert r["Glukóza"]["value"] == 5.0                                  # krev
     assert r["Glukóza (moč)"]["value_text"] == "neg"                     # moč má vlastní název
     assert r["Bílkovina (moč)"]["value_text"] == "+"
-    assert r["Leukocyty (moč, sediment)"]["value"] == 4 and r["Leukocyty (moč, sediment)"]["unit"] == "elem./1µ"
+    assert r["Leukocyty (moč, sediment)"]["value"] == 4 and r["Leukocyty (moč, sediment)"]["unit"] == "elem./1u"
     assert p["unparsed_rows"] == []                                      # „Krevní obraz“ je jen nadpis
 
 
@@ -290,6 +290,8 @@ def test_old_lab_table_is_migrated_with_data():
     db = connect(path)
     assert [tuple(r) for r in db.execute("SELECT analyte, value, value_text FROM lab_result")] == [("Ferritin", 50.0, "")]
     db.execute("INSERT INTO lab_result (taken_on, analyte, value_text) VALUES ('2025-01-02', 'Glukóza (moč)', 'neg')")
+    db.commit()
+    assert [r["person_id"] for r in db.execute("SELECT person_id FROM lab_result")] == [1, 1]          # stará data patří vlastníkovi
     connect(path).close()                                                                         # druhé otevření nesmí nic rozbít
 
 
@@ -388,3 +390,152 @@ def test_lab_interpretation_settings(client):
     assert client.put("/labs/settings", json={"analyte": "X", "mode": "hodne"}).status_code == 422   # neznámý režim
     assert TestClient(app).get("/labs/settings").status_code == 401
     assert TestClient(app).put("/labs/settings", json={"analyte": "X", "mode": "nizsi"}).status_code == 401
+
+
+# ---------- osoby ----------
+
+def test_persons_crud_and_scoping(client):
+    assert client.get("/persons").json() == [{"id": 1, "name": "Já", "owner": True}]
+    pid = client.post("/persons", json={"name": "Matěj"}).json()["id"]
+    assert client.post("/persons", json={"name": "matěj"}).status_code == 409                   # jméno je jedinečné, bez ohledu na velikost
+    assert client.put("/persons/1", json={"name": "Jakub"}).json()["name"] == "Jakub"
+    assert client.put("/persons/99", json={"name": "X"}).status_code == 404
+    client.post("/labs", json={"person_id": pid, "taken_on": "2026-01-07", "analyte": "TSH", "value": 0.85, "unit": "mU/L"})
+    client.post("/labs", json={"taken_on": "2026-02-01", "analyte": "Urea", "value": 5.0})       # výchozí osoba = vlastník
+    client.post("/events", json={"person_id": pid, "day": "2026-03-01", "kind": "exam", "title": "Prohlídka"})
+    assert [r["analyte"] for r in client.get("/labs").json()] == ["Urea"]
+    assert [r["analyte"] for r in client.get("/labs", params={"person_id": pid}).json()] == ["TSH"]
+    assert client.get("/events").json() == [] and len(client.get("/events", params={"person_id": pid}).json()) == 1
+    tl = client.get("/timeline", params={"person_id": pid}).json()
+    assert [i["title"] for i in tl] == ["Krevní rozbory", "Prohlídka"]
+    assert client.get("/timeline").json()[0]["count"] == 1
+    assert client.get("/labs", params={"person_id": 99}).status_code == 404
+    assert client.post("/labs", json={"person_id": 99, "taken_on": "2026-01-01", "analyte": "X", "value": 1}).status_code == 404
+    assert TestClient(app).get("/persons").status_code == 401
+    assert TestClient(app).post("/persons", json={"name": "X"}).status_code == 401
+
+
+def test_same_result_for_two_people_is_not_a_duplicate(client):
+    pid = client.post("/persons", json={"name": "Jana"}).json()["id"]
+    item = {"taken_on": "2026-01-01", "lab": "x", "analyte": "Urea", "value": 5.0, "unit": "mmol/L"}
+    assert client.post("/labs/bulk", json={"items": [{**item, "person_id": 1}, {**item, "person_id": pid}]}).json() == {"inserted": 2, "skipped": 0}
+    assert client.post("/labs/bulk", json={"items": [{**item, "person_id": pid}]}).json() == {"inserted": 0, "skipped": 1}
+    assert client.post("/labs/bulk", json={"items": [{**item, "person_id": 99}]}).status_code == 404
+
+
+def test_status_counts_per_person(client):
+    pid = client.post("/persons", json={"name": "Jana"}).json()["id"]
+    client.post("/labs", json={"person_id": pid, "taken_on": "2026-01-01", "analyte": "Urea", "value": 5.0})
+    st = client.get("/status").json()["persons"]
+    assert {p["name"]: (p["labs"], p["lab_days"]) for p in st} == {"Já": (0, 0), "Jana": (1, 1)}
+
+
+def test_seed_creates_people_and_assigns_items_by_name():
+    db = connect(":memory:")
+    data = {"persons": [{"name": "Jakub", "owner": True}, {"name": "Matěj"}],
+            "labs": [{"person": "Matěj", "taken_on": "2026-01-07", "lab": "x", "analyte": "TSH", "value": 0.85},
+                     {"taken_on": "2026-01-08", "lab": "x", "analyte": "Urea", "value": 5.0}],
+            "events": [{"person": "Matěj", "day": "2026-03-01", "kind": "exam", "title": "Prohlídka"}]}
+    packed = base64.b64encode(_json.dumps(data).encode()).decode()
+    assert seed.apply_seed(db, packed)["labs_inserted"] == 2
+    assert {r["name"]: r["id"] for r in db.execute("SELECT * FROM person")} == {"Jakub": 1, "Matěj": 2}
+    assert [(r["person_id"], r["analyte"]) for r in db.execute("SELECT * FROM lab_result ORDER BY id")] == [(2, "TSH"), (1, "Urea")]
+    assert seed.apply_seed(db, packed)["labs_inserted"] == 0                                # idempotentní i s osobami
+    bad = base64.b64encode(_json.dumps({"labs": [{"person": "Nikdo", "taken_on": "2026-01-01", "analyte": "X", "value": 1}]}).encode()).decode()
+    assert "error" in seed.apply_seed(connect(":memory:"), bad)
+
+
+# ---------- další rozložení listů a sjednocení názvů (texty jsou VYMYŠLENÉ) ----------
+
+TEXT_C = """Opis výsledku
+
+Provádějící laboratoř:   123456 Nějaká Lab. - biochemie
+Požadující lékař:         123456 MUDr. TEST LEKAŘ
+Pacient:                   123456 TESTOVACÍ PACIENT
+                                               NUMERICKÉ HODNOTY
+
+Odběr       Vzorek            NČLP    Název                     Hodnota    Jednotka Ref.rozmezí Komentář
+07.01.2026   1608/OKBH/07      03085    Urea                           4,0   mmol/L         2,8-8,1
+07.01.2026   1608/OKBH/07      17339    GF CKD-EPI                   1,91    ml/s/1,73m2   1,00-3,00
+07.01.2026   1608/OKBH/07      03077    Kyselina močová              445    umol/L         202-417
+07.01.2026   1608/OKBH/07      02380    WBC - leukocyty                5,3   10ˆ9/L         4,0-10,0
+07.01.2026   1608/OKBH/07      03048    TSH                         0,851    mU/L         0,510-4,300
+07.01.2026   1608/OKBH/07      03410    pH                             6,0   1
+07.01.2026   1608/OKBH/07      03137    Specifická hustota          1,009    g/cmˆ3
+                                   NEFORMALIZOVANÉ TEXTOVÉ HODNOTY
+07.01.2026           1608/OKBH/07      55974     Hodnocení CKD dle eGFR          G1
+07.01.2026           1608/OKBH/07      20662     Krevní obraz                    (provedeno)
+07.01.2026           1608/OKBH/07      03364     Glukóza                         neg
+07.01.2026           1608/OKBH/07      20224     MS bez patologie                bez patologického nálezu
+"""
+
+TEXT_D = """Výsledkový list                                       Unilabs Diagnostics, k.s.
+ TESTOVACÍ PACIENT                                                             lab.online
+ ČP: 123456                      Datum narození: 01.01.2000
+ Odběr: 17.07.2026 08:29             Přijato: 17.07.2026 08:29
+
+  Název vyšetření                                     Výsledek         Jednotka                      Meze                       Hodnocení
+  Biochemie - krev
+  HAD AM   S_Kreatinin                           92                          µmol/L                   45 - 86                   |      | |*      |
+  HAD      C_CKD-EPI 2021                        1,78                        ml/s/1,73 m2           1,50 - 3,00                 |      |*|       |
+           Hodnocení stádia CKD dle výpočtu CKD-EPI... G1
+  HAD AM  P_Glukóza                                    5,5                   mmol/L                   3,9 - 5,6                 |      |*|       |
+  HAD    S_25OH vitamin D                              62,3                  nmol/L                75,0 - 250,0                 |    *| |        |
+  HAD    U_Hustota                                     1009                  kg/m3                 1010 - 1030                  |    *| |        |
+  HAD    U_Bílkovina                                   0                     arb.j.                    0-0                      |     |*|        |
+  HAD    U_Glukóza                                     0                     arb.j.                    0-0                      |     |*|        |
+  HAD    U_Leukocyty sediment                          <3                    /ul                       0 - 10                   |     |*|        |
+  HAD    U_Epitelie dlaždicovité                       0-15                  /ul
+  HAD    U_Hlen                                        přítomen
+  HAD AM B_Hematokrit                                  0,464                                       0,400 - 0,500                |      |*|       |
+  HAD AM B_MCV                                         86,6                  fl                     82,0 - 98,0                 |      |*|       |
+  HAD AM B_Leukocyty                                   5,5                   10^9/L                  4,0 - 10,0                 |      |*|       |
+  HAD    B_Normoblasty abs. počet                      0,000                 10^9/L                0,000 - 0,015                |      |*|       |
+"""
+
+
+def test_parse_euc_layout_with_row_dates_and_unit_normalization():
+    p = labs.parse_lab_text(TEXT_C)
+    r = by_name(p)
+    assert p["taken_on"] == "2026-01-07" and p["lab"] == "Nějaká Lab. - biochemie"
+    assert all(x["taken_on"] == "2026-01-07" for x in p["results"])
+    assert (r["Urea"]["value"], r["Urea"]["unit"], r["Urea"]["ref_low"], r["Urea"]["ref_high"]) == (4.0, "mmol/L", 2.8, 8.1)
+    assert r["GF CKD-EPI"]["unit"] == "ml/s/1,73m2" and r["GF CKD-EPI"]["ref_high"] == 3.0
+    assert r["WBC - leukocyty"]["unit"] == "10^9/L"                                   # ˆ -> ^
+    assert r["pH (moč)"]["unit"] == "" and r["pH (moč)"]["value"] == 6.0               # jednotka „1“ je bezrozměrná
+    assert r["Specifická hustota (moč)"]["unit"] == "g/cm^3"
+    assert r["TSH"]["ref_low"] == 0.51
+    assert r["Hodnocení CKD dle eGFR"]["value_text"] == "G1"
+    assert r["Glukóza (moč)"]["value_text"] == "neg"
+    assert r["MS bez patologie"]["value_text"] == "bez patologického nálezu"
+    assert "Krevní obraz" not in r and p["unparsed_rows"] == []                         # „(provedeno)“ není výsledek
+    assert "TESTOVAC" not in str(p) and "123456" not in str(p) and "LEKAŘ" not in str(p)
+
+
+def test_parse_unilabs_layout_maps_to_common_names_and_units():
+    p = labs.parse_lab_text(TEXT_D)
+    r = by_name(p)
+    assert p["taken_on"] == "2026-07-17" and p["lab"] == "Unilabs Diagnostics, k.s."
+    assert (r["Kreatinin"]["value"], r["Kreatinin"]["unit"], r["Kreatinin"]["ref_low"], r["Kreatinin"]["ref_high"]) == (92.0, "umol/L", 45.0, 86.0)
+    assert r["GF CKD-EPI"]["unit"] == "ml/s/1,73m2"
+    assert r["Hodnocení CKD dle eGFR"]["value_text"] == "G1"
+    assert r["Glukóza"]["value"] == 5.5 and r["Glukóza (moč)"]["value_text"] == "neg"      # krev a moč se nepletou, 0 na proužku = neg
+    assert r["25-OH vitamin D"]["value"] == 62.3
+    assert (r["Specifická hustota (moč)"]["value"], r["Specifická hustota (moč)"]["unit"], r["Specifická hustota (moč)"]["ref_low"]) == (1.009, "g/cm^3", 1.01)
+    assert r["Bílkovina (moč)"]["value_text"] == "neg" and r["Bílkovina (moč)"]["ref_low"] is None
+    lk = r["Leukocyty (moč, sediment)"]
+    assert (lk["value"], lk["note"], lk["unit"]) == (3.0, "<", "/ul")                        # „<3“ se nesmí změnit na přesné 3
+    assert r["Epitelie dlaždicovité (moč, sediment)"]["value_text"] == "0-15"
+    assert r["Hlen (moč, sediment)"]["value_text"] == "přítomen"
+    assert r["HCT - hematokrit"]["unit"] == "" and r["MCV-stř.obj.ery"]["unit"] == "fL"
+    assert r["WBC - leukocyty"]["value"] == 5.5 and "Normoblasty abs. počet" in r
+    assert "TESTOVAC" not in str(p) and "123456" not in str(p)
+
+
+def test_names_from_different_labs_match_despite_unicode_forms():
+    import unicodedata
+    decomposed = unicodedata.normalize("NFD", TEXT_C)                                         # ř = r + háček apod.
+    assert "Kyselina močová" in by_name(labs.parse_lab_text(decomposed))                      # název je vždy v NFC
+    c = {k for k in by_name(labs.parse_lab_text(TEXT_C))}
+    d = {k for k in by_name(labs.parse_lab_text(TEXT_D))}
+    assert {"GF CKD-EPI", "Hodnocení CKD dle eGFR", "WBC - leukocyty", "Glukóza (moč)", "Specifická hustota (moč)"} <= (c & d)

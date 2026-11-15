@@ -11,7 +11,13 @@ def get_db(request: Request) -> sqlite3.Connection:
     return request.app.state.db
 
 
+def require_person(db: sqlite3.Connection, person_id: int) -> None:
+    if db.execute("SELECT 1 FROM person WHERE id = ?", (person_id,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Osoba neexistuje")
+
+
 class LabIn(BaseModel):
+    person_id: int = 1
     taken_on: date
     analyte: str = Field(min_length=1)
     value: float | None = None
@@ -30,6 +36,7 @@ class LabIn(BaseModel):
 
 
 class EventIn(BaseModel):
+    person_id: int = 1
     day: date
     kind: str = "other"
     title: str = Field(min_length=1)
@@ -38,10 +45,11 @@ class EventIn(BaseModel):
 
 @router.post("/labs", status_code=201)
 def add_lab(item: LabIn, db: sqlite3.Connection = Depends(get_db)):
+    require_person(db, item.person_id)
     cur = db.execute(
-        "INSERT INTO lab_result (taken_on, lab, analyte, value, value_text, unit, ref_low, ref_high, note) "
-        "VALUES (?,?,?,?,?,?,?,?,?)",
-        (item.taken_on.isoformat(), item.lab, item.analyte, item.value, item.value_text, item.unit,
+        "INSERT INTO lab_result (person_id, taken_on, lab, analyte, value, value_text, unit, ref_low, ref_high, note) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (item.person_id, item.taken_on.isoformat(), item.lab, item.analyte, item.value, item.value_text, item.unit,
          item.ref_low, item.ref_high, item.note),
     )
     db.commit()
@@ -49,10 +57,11 @@ def add_lab(item: LabIn, db: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/labs")
-def list_labs(analyte: str | None = None, db: sqlite3.Connection = Depends(get_db)):
-    sql, args = "SELECT * FROM lab_result", []
+def list_labs(person_id: int = 1, analyte: str | None = None, db: sqlite3.Connection = Depends(get_db)):
+    require_person(db, person_id)
+    sql, args = "SELECT * FROM lab_result WHERE person_id = ?", [person_id]
     if analyte:
-        sql += " WHERE analyte = ?"
+        sql += " AND analyte = ?"
         args.append(analyte)
     rows = [dict(r) for r in db.execute(sql + " ORDER BY taken_on, id", args)]
     for r in rows:
@@ -64,9 +73,10 @@ def list_labs(analyte: str | None = None, db: sqlite3.Connection = Depends(get_d
 
 @router.post("/events", status_code=201)
 def add_event(item: EventIn, db: sqlite3.Connection = Depends(get_db)):
+    require_person(db, item.person_id)
     cur = db.execute(
-        "INSERT INTO health_event (day, kind, title, note) VALUES (?,?,?,?)",
-        (item.day.isoformat(), item.kind, item.title, item.note),
+        "INSERT INTO health_event (person_id, day, kind, title, note) VALUES (?,?,?,?,?)",
+        (item.person_id, item.day.isoformat(), item.kind, item.title, item.note),
     )
     db.commit()
     return {"id": cur.lastrowid}
@@ -81,8 +91,9 @@ def delete_event(event_id: int, db: sqlite3.Connection = Depends(get_db)):
 
 
 @router.get("/events")
-def list_events(db: sqlite3.Connection = Depends(get_db)):
-    return [dict(r) for r in db.execute("SELECT * FROM health_event ORDER BY day")]
+def list_events(person_id: int = 1, db: sqlite3.Connection = Depends(get_db)):
+    require_person(db, person_id)
+    return [dict(r) for r in db.execute("SELECT * FROM health_event WHERE person_id = ? ORDER BY day", (person_id,))]
 
 
 @router.get("/metrics")
@@ -105,16 +116,17 @@ def list_metrics(
 
 
 @router.get("/timeline")
-def timeline(db: sqlite3.Connection = Depends(get_db)):
-    """Společná časová osa: události + krevní rozbory (metriky jsou přes /metrics)."""
+def timeline(person_id: int = 1, db: sqlite3.Connection = Depends(get_db)):
+    """Společná časová osa jedné osoby: události + krevní rozbory (metriky Garminu jsou přes /metrics)."""
+    require_person(db, person_id)
     items = [
         {"id": r["id"], "day": r["day"], "type": "event", "kind": r["kind"], "title": r["title"], "note": r["note"]}
-        for r in db.execute("SELECT * FROM health_event")
+        for r in db.execute("SELECT * FROM health_event WHERE person_id = ?", (person_id,))
     ]
     for r in db.execute(
         "SELECT taken_on, COUNT(*) AS n, SUM(CASE WHEN value IS NOT NULL AND "
         "((ref_low IS NOT NULL AND value < ref_low) OR (ref_high IS NOT NULL AND value > ref_high)) "
-        "THEN 1 ELSE 0 END) AS mimo FROM lab_result GROUP BY taken_on"
+        "THEN 1 ELSE 0 END) AS mimo FROM lab_result WHERE person_id = ? GROUP BY taken_on", (person_id,)
     ):
         items.append({"day": r["taken_on"], "type": "lab", "title": "Krevní rozbory", "count": r["n"],
                       "out_of_range_count": r["mimo"], "out_of_range": r["mimo"] > 0})
