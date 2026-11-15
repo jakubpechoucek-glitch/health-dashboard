@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 
-from . import garmin, records
+from . import garmin, labs, records
 from .auth import require_auth
 from .config import get_settings
 from .db import connect
@@ -29,6 +29,7 @@ app = FastAPI(
 )
 app.include_router(garmin.router, dependencies=[Depends(require_auth)])
 app.include_router(records.router, dependencies=[Depends(require_auth)])
+app.include_router(labs.router, dependencies=[Depends(require_auth)])
 
 
 @app.get("/health")

@@ -82,6 +82,15 @@
   ul { list-style:none; padding:0; margin:0; }
   li { background:var(--tile); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:8px; }
   .out { color:var(--err); font-weight:600; }
+  .nahrat { display:inline-block; }
+  .nahrat input { position:absolute; width:1px; height:1px; opacity:0; }
+  .nahrat span { display:inline-block; padding:8px 16px; border-radius:999px; border:1px solid var(--text); background:var(--tile); cursor:pointer; font-weight:600; }
+  .nahrat input:focus-visible + span { outline:2px solid var(--series-1); outline-offset:2px; }
+  .nahled { border:1px solid var(--series-1); border-radius:12px; padding:12px; margin:12px 0; background:var(--surface-1); }
+  .nahled h3 { margin:0 0 6px; font-size:1rem; }
+  .nahled .tablewrap { max-height:340px; }
+  td.mimo { color:var(--err); font-weight:700; }
+  td.nazev small, .ref { color:var(--text-secondary); font-weight:400; }
   @media (prefers-reduced-motion: reduce) { .grafy { transition:none; } }
 </style>
 </head>
@@ -117,6 +126,22 @@
     <div class="tablewrap" id="tabulka" hidden><table id="tab"></table></div>
   </section>
 
+  <section id="rozbory-sekce" hidden>
+    <h2>Krevní rozbory</h2>
+    <div class="bar">
+      <label class="nahrat"><input type="file" id="pdf" accept="application/pdf"><span>Nahrát PDF s výsledky</span></label>
+      <span class="msg" id="pdf-stav" role="status"></span>
+    </div>
+    <div class="nahled" id="nahled" hidden>
+      <h3 id="nahled-nadpis"></h3>
+      <p class="msg" id="nahled-pozn"></p>
+      <div class="tablewrap"><table id="nahled-tab"></table></div>
+      <div class="bar"><button class="primary" id="nahled-ulozit">Uložit</button><button id="nahled-zrusit">Zrušit</button></div>
+    </div>
+    <div class="tablewrap" id="rozbory-wrap" hidden><table id="rozbory-tab"></table></div>
+    <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
+  </section>
+
   <section id="osa-sekce" hidden>
     <h2>Časová osa (vyšetření a rozbory)</h2>
     <ul id="osa"></ul>
@@ -140,10 +165,13 @@
   async function api(path, opts = {}) {
     const t = token();
     if (!t) throw new Chyba(401, "Nejsi přihlášen.");
-    const r = await fetch(path, { ...opts, headers: { Authorization: "Bearer " + t } });
+    const r = await fetch(path, { ...opts, headers: { ...(opts.headers || {}), Authorization: "Bearer " + t } });
     if (r.status === 401) throw new Chyba(401, "Přihlášení vypršelo.");
     if (r.status === 403) throw new Chyba(403, "Tento účet nemá přístup.");
-    if (!r.ok) throw new Chyba(r.status, "Chyba " + r.status);
+    if (!r.ok) {
+      let detail = ""; try { detail = (await r.json()).detail; } catch (e) {}
+      throw new Chyba(r.status, typeof detail === "string" && detail ? detail : "Chyba " + r.status);
+    }
     return r.json();
   }
 
@@ -337,20 +365,95 @@
     $("osa-prazdna").hidden = data.length > 0;
     for (const i of data) {
       const li = document.createElement("li");
-      li.textContent = `${i.day} · ${i.title}` + (i.type === "lab" ? ` ${i.value} ${i.unit}` : "");
-      if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = " ⚠ mimo rozsah"; li.append(o); }
+      li.textContent = `${i.day} · ${i.title}` + (i.type === "lab" ? `: ${i.count} hodnot` : "");
+      if (i.out_of_range) { const o = document.createElement("span"); o.className = "out"; o.textContent = ` ⚠ ${i.out_of_range_count} mimo rozsah`; li.append(o); }
       $("osa").append(li);
     }
   }
+
+
+  // ---------- krevní rozbory ----------
+  const mimoRozsah = (r) => r.value != null && ((r.ref_low != null && r.value < r.ref_low) || (r.ref_high != null && r.value > r.ref_high));
+  const smer = (r) => (r.ref_high != null && r.value > r.ref_high ? " ↑" : " ↓");        // šipka, aby barva nebyla jediný signál
+  const refText = (r) => (r.ref_low == null && r.ref_high == null ? "" : `${r.ref_low != null ? cisloLab(r.ref_low) : "…"} – ${r.ref_high != null ? cisloLab(r.ref_high) : "…"}`);
+  const cisloLab = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });        // bez zbytečných nul: 123, 5,4, 0,995
+  const hodnotaText = (r) => (r.value != null ? cisloLab(r.value) : r.value_text);
+
+  function vykresliRozbory(radky) {
+    $("rozbory-sekce").hidden = false;
+    $("rozbory-wrap").hidden = !radky.length; $("rozbory-prazdna").hidden = radky.length > 0;
+    const tab = $("rozbory-tab"); tab.replaceChildren();
+    if (!radky.length) return;
+    const odbery = [...new Set(radky.map((r) => r.taken_on))].sort().reverse().slice(0, 6);   // nejnovější vlevo
+    const analyty = [], posledni = new Map();
+    for (const r of radky) {
+      if (!posledni.has(r.analyte)) analyty.push(r.analyte);
+      if (!posledni.has(r.analyte) || r.taken_on >= posledni.get(r.analyte).taken_on) posledni.set(r.analyte, r);
+    }
+    const hr = tab.createTHead().insertRow();
+    for (const h of ["Analyt", ...odbery.map(dlouzeDatum), "Ref. meze"]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
+    const tb = tab.createTBody();
+    for (const a of analyty) {
+      const tr = tb.insertRow(), pos = posledni.get(a), nazev = tr.insertCell();
+      nazev.className = "nazev"; nazev.textContent = a;
+      if (pos.unit) { const u = document.createElement("small"); u.textContent = " " + pos.unit; nazev.append(u); }
+      for (const d of odbery) {
+        const r = radky.find((x) => x.analyte === a && x.taken_on === d), td = tr.insertCell();
+        td.textContent = r ? hodnotaText(r) + (mimoRozsah(r) ? smer(r) : "") : "–";
+        if (r && mimoRozsah(r)) { td.className = "mimo"; td.title = "Mimo referenční meze"; }
+      }
+      const ref = tr.insertCell(); ref.className = "ref"; ref.textContent = refText(pos);
+    }
+  }
+  const dlouzeDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
+
+  // nahrání PDF: server z něj jen vyčte hodnoty (PDF se neukládá), uloží se až po potvrzení náhledu
+  let nahled = null;
+  function zavriNahled() { nahled = null; $("nahled").hidden = true; $("pdf").value = ""; }
+  $("pdf").addEventListener("change", async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    $("pdf-stav").textContent = "Čtu PDF…"; $("pdf-stav").className = "msg";
+    try {
+      const p = await api("/labs/import/preview", { method: "POST", headers: { "Content-Type": "application/pdf" }, body: f });
+      nahled = p;
+      $("nahled-nadpis").textContent = `Náhled: odběr ${dlouzeDatum(p.taken_on)}, ${p.results.length} výsledků`;
+      const mimo = p.results.filter(mimoRozsah).length;
+      $("nahled-pozn").textContent = `${mimo} mimo referenční meze.` + (p.unparsed_rows.length ? ` Nepřečtené řádky (${p.unparsed_rows.length}): ${p.unparsed_rows.map((x) => x.replace(/\s+/g, " ")).join(" | ")}` : "") + " Zkontroluj hodnoty a potvrď uložení.";
+      const tab = $("nahled-tab"); tab.replaceChildren();
+      const hr = tab.createTHead().insertRow();
+      for (const h of ["Analyt", "Hodnota", "Jednotka", "Ref. meze"]) { const th = document.createElement("th"); th.textContent = h; hr.append(th); }
+      const tb = tab.createTBody();
+      for (const r of p.results) {
+        const tr = tb.insertRow(); tr.insertCell().textContent = r.analyte;
+        const v = tr.insertCell(); v.textContent = hodnotaText(r) + (mimoRozsah(r) ? smer(r) : ""); if (mimoRozsah(r)) v.className = "mimo";
+        tr.insertCell().textContent = r.unit; const ref = tr.insertCell(); ref.className = "ref"; ref.textContent = refText(r);
+      }
+      $("nahled").hidden = false; $("pdf-stav").textContent = "";
+    } catch (err) {
+      $("pdf-stav").textContent = err.status === 401 ? err.message : "Import se nepodařil: " + err.message; $("pdf-stav").className = "msg err"; zavriNahled();
+    }
+  });
+  $("nahled-zrusit").addEventListener("click", () => { zavriNahled(); $("pdf-stav").textContent = ""; });
+  $("nahled-ulozit").addEventListener("click", async () => {
+    if (!nahled) return;
+    const tl = $("nahled-ulozit"); tl.disabled = true;
+    try {
+      const items = nahled.results.map((r) => ({ ...r, taken_on: nahled.taken_on, lab: nahled.lab }));
+      const r = await api("/labs/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
+      zavriNahled(); $("pdf-stav").textContent = `Uloženo ${r.inserted} výsledků` + (r.skipped ? `, ${r.skipped} už v databázi bylo.` : "."); $("pdf-stav").className = "msg ok";
+      await nacti();
+    } catch (err) { $("pdf-stav").textContent = "Uložení se nepodařilo: " + err.message; $("pdf-stav").className = "msg err"; }
+    finally { tl.disabled = false; }
+  });
 
   async function nacti() {
     $("grafy").classList.add("nacitam");              // refetch drží rámec, jen zeslabí
     try {
       const od = dny(365)[0];
-      const [osa, metriky] = await Promise.all([api("/timeline"), api("/metrics?from=" + od)]);
+      const [osa, metriky, rozbory] = await Promise.all([api("/timeline"), api("/metrics?from=" + od), api("/labs")]);
       stav.metriky = metriky;
       $("stav").textContent = ""; $("ovladani").hidden = false;
-      vykresliVse(); vykresliOsu(osa);
+      vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
     } finally { $("grafy").classList.remove("nacitam"); }
   }
 

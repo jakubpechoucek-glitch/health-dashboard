@@ -26,7 +26,8 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 |---|---|---|
 | POST | `/garmin/sync?days=7` | stáhne data z Garmin Personal API (pull) |
 | GET | `/metrics?metric=&from=&to=` | denní metriky (kroky, klidový tep, spánek…) |
-| POST/GET | `/labs` | krevní rozbory |
+| POST/GET | `/labs` | krevní rozbory (ruční zadání, výpis) |
+| POST | `/labs/import/preview`, `/labs/bulk` | import rozborů z PDF s náhledem |
 | POST/GET | `/events` | události (vyšetření, výsledek genetiky, změna léků) |
 | GET | `/timeline` | události + rozbory seřazené v čase, s příznakem mimo referenční rozsah |
 
@@ -35,6 +36,7 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 - [Architektura a datový model](docs/architecture.md)
 - [Garmin Health API](docs/garmin.md)
 - [Soukromí a bezpečnost](docs/privacy.md)
+- [Krevní rozbory a import z PDF](docs/labs.md)
 - [Přihlášení](docs/auth.md)
 - [Nasazení na Render](docs/deploy-render.md)
 - [Plán](docs/roadmap.md)

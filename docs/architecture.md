@@ -20,7 +20,7 @@ ruční zadání / import PDF ─► /labs, /events ─────────�
 |---|---|
 | `garmin_raw` | přijaté payloady beze změny |
 | `metric_daily` | `source, metric, day, value, unit` (PK `source, metric, day`) |
-| `lab_result` | rozbory: analyt, hodnota, jednotka, referenční rozsah, laboratoř |
+| `lab_result` | rozbory: analyt, číselná hodnota nebo text (`neg`, `+`), jednotka, referenční rozsah, laboratoř |
 | `health_event` | události na časové ose (`exam`, `genetics`, `medication`, `other`) |
 
 Genetika zatím existuje jako událost na časové ose (datum výsledku, odkaz na lokální soubor).

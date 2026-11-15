@@ -24,13 +24,14 @@ CREATE TABLE IF NOT EXISTS lab_result (
     taken_on TEXT NOT NULL,     -- YYYY-MM-DD
     lab TEXT NOT NULL DEFAULT '',
     analyte TEXT NOT NULL,      -- např. "Ferritin"
-    value REAL NOT NULL,
+    value REAL,                 -- číselný výsledek, nebo NULL u kvalitativního (neg, +)
+    value_text TEXT NOT NULL DEFAULT '',
     unit TEXT NOT NULL DEFAULT '',
     ref_low REAL,
     ref_high REAL,
-    note TEXT NOT NULL DEFAULT ''
+    note TEXT NOT NULL DEFAULT '',
+    CHECK (value IS NOT NULL OR value_text != '')
 );
-CREATE INDEX IF NOT EXISTS ix_lab_analyte_day ON lab_result (analyte, taken_on);
 
 -- Události na časové ose: kolonoskopie, výsledek genetiky, změna léků...
 CREATE TABLE IF NOT EXISTS health_event (
@@ -43,10 +44,31 @@ CREATE TABLE IF NOT EXISTS health_event (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Starší tabulka lab_result měla `value REAL NOT NULL` a chyběl `value_text`: přestavět s kopií dat."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(lab_result)")}
+    if "value_text" not in cols:
+        conn.executescript("""
+            ALTER TABLE lab_result RENAME TO lab_result_old;
+            CREATE TABLE lab_result (
+                id INTEGER PRIMARY KEY, taken_on TEXT NOT NULL, lab TEXT NOT NULL DEFAULT '',
+                analyte TEXT NOT NULL, value REAL, value_text TEXT NOT NULL DEFAULT '',
+                unit TEXT NOT NULL DEFAULT '', ref_low REAL, ref_high REAL, note TEXT NOT NULL DEFAULT '',
+                CHECK (value IS NOT NULL OR value_text != '')
+            );
+            INSERT INTO lab_result (id, taken_on, lab, analyte, value, unit, ref_low, ref_high, note)
+                SELECT id, taken_on, lab, analyte, value, unit, ref_low, ref_high, note FROM lab_result_old;
+            DROP TABLE lab_result_old;
+        """)
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_lab_analyte_day ON lab_result (analyte, taken_on)")
+    conn.commit()
+
+
 def connect(path: str) -> sqlite3.Connection:
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn

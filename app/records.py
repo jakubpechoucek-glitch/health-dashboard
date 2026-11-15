@@ -2,7 +2,7 @@ import sqlite3
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 router = APIRouter(tags=["data"])
 
@@ -14,12 +14,19 @@ def get_db(request: Request) -> sqlite3.Connection:
 class LabIn(BaseModel):
     taken_on: date
     analyte: str = Field(min_length=1)
-    value: float
+    value: float | None = None
+    value_text: str = ""       # kvalitativní výsledek (neg, +, G1), když není číselný
     unit: str = ""
     lab: str = ""
     ref_low: float | None = None
     ref_high: float | None = None
     note: str = ""
+
+    @model_validator(mode="after")
+    def _has_value(self):
+        if self.value is None and not self.value_text:
+            raise ValueError("Chybí hodnota (value nebo value_text)")
+        return self
 
 
 class EventIn(BaseModel):
@@ -32,9 +39,9 @@ class EventIn(BaseModel):
 @router.post("/labs", status_code=201)
 def add_lab(item: LabIn, db: sqlite3.Connection = Depends(get_db)):
     cur = db.execute(
-        "INSERT INTO lab_result (taken_on, lab, analyte, value, unit, ref_low, ref_high, note) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (item.taken_on.isoformat(), item.lab, item.analyte, item.value, item.unit,
+        "INSERT INTO lab_result (taken_on, lab, analyte, value, value_text, unit, ref_low, ref_high, note) "
+        "VALUES (?,?,?,?,?,?,?,?,?)",
+        (item.taken_on.isoformat(), item.lab, item.analyte, item.value, item.value_text, item.unit,
          item.ref_low, item.ref_high, item.note),
     )
     db.commit()
@@ -47,7 +54,12 @@ def list_labs(analyte: str | None = None, db: sqlite3.Connection = Depends(get_d
     if analyte:
         sql += " WHERE analyte = ?"
         args.append(analyte)
-    return [dict(r) for r in db.execute(sql + " ORDER BY taken_on, analyte", args)]
+    rows = [dict(r) for r in db.execute(sql + " ORDER BY taken_on, id", args)]
+    for r in rows:
+        v = r["value"]
+        r["out_of_range"] = v is not None and (
+            (r["ref_low"] is not None and v < r["ref_low"]) or (r["ref_high"] is not None and v > r["ref_high"]))
+    return rows
 
 
 @router.post("/events", status_code=201)
@@ -91,13 +103,11 @@ def timeline(db: sqlite3.Connection = Depends(get_db)):
         {"day": r["day"], "type": "event", "kind": r["kind"], "title": r["title"], "note": r["note"]}
         for r in db.execute("SELECT * FROM health_event")
     ]
-    items += [
-        {
-            "day": r["taken_on"], "type": "lab", "title": r["analyte"],
-            "value": r["value"], "unit": r["unit"],
-            "out_of_range": (r["ref_low"] is not None and r["value"] < r["ref_low"])
-            or (r["ref_high"] is not None and r["value"] > r["ref_high"]),
-        }
-        for r in db.execute("SELECT * FROM lab_result")
-    ]
+    for r in db.execute(
+        "SELECT taken_on, COUNT(*) AS n, SUM(CASE WHEN value IS NOT NULL AND "
+        "((ref_low IS NOT NULL AND value < ref_low) OR (ref_high IS NOT NULL AND value > ref_high)) "
+        "THEN 1 ELSE 0 END) AS mimo FROM lab_result GROUP BY taken_on"
+    ):
+        items.append({"day": r["taken_on"], "type": "lab", "title": "Krevní rozbory", "count": r["n"],
+                      "out_of_range_count": r["mimo"], "out_of_range": r["mimo"] > 0})
     return sorted(items, key=lambda i: i["day"])

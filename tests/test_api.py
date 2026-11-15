@@ -31,8 +31,8 @@ def test_timeline_merges_labs_and_events(client):
     client.post("/labs", json={"taken_on": "2026-11-01", "analyte": "Ferritin",
                                "value": 20, "unit": "µg/l", "ref_low": 30, "ref_high": 300})
     tl = client.get("/timeline").json()
-    assert [i["title"] for i in tl] == ["Kolonoskopie", "Ferritin"]
-    assert tl[1]["out_of_range"] is True
+    assert [i["title"] for i in tl] == ["Kolonoskopie", "Krevní rozbory"]
+    assert tl[1]["out_of_range"] is True and tl[1]["count"] == 1
 
 
 def test_data_endpoints_require_login(client):
@@ -168,3 +168,124 @@ def test_fallback_budget_is_capped(client, monkeypatch):
     app.dependency_overrides.pop(garmin.get_http, None)
     assert len(client.get("/metrics", params={"metric": "steps"}).json()) == 2
     assert any("limit" in e for e in r["errors"])
+
+
+# ---------- import rozborů z PDF (texty jsou VYMYŠLENÉ, jen kopírují rozložení laboratoře) ----------
+
+from app import labs
+
+TEXT_A = """Nějaká ordinace s.r.o.
+Výsledkový list
+Pacient:     Test Pacient                                  č. pojištěnce: 000000/0000
+Datum odběru:             01.02.2026 07:15   Číslo vzorku: X1
+Skup.    Kód      Název                                   S         NumVýs.           Hodn.                 Ref. meze
+         03085    Urea                                                5,4 mmol/L       L | |*| |             2,8 - 8,1
+         17339    GF CKD-EPI                                         1,51 ml/s/1,73 L | |*| |                  1 -3
+         55974    Hodnocení CKD dle eGFR                              G1
+         18004    Lp(a)                                              123 nmol/L        L | | |* |              0 - 75
+         01896    Glukóza                                               5 mmol/L       L | |*| |             3,9 - 5,6
+         20662     Krevní obraz
+(provedeno)
+         03364    Glukóza                                             neg
+         03413    Bílkovina                                              +
+         03384    Leukocyty                                              4 elem./1µ    L 0 arb.j.            0 - 10
+"""
+
+TEXT_B = """Nějaká ordinace s.r.o.
+Laboratorní výsledky pacienta
+Pacient:     Ing. Test Pacient                               č. pojištěnce: 000000/0000
+Datum odběru: 19.12.2023 0 Datum zpracování:       19.12.2023   Číslo vzorku:
+Kód        Název                                                   Ref. meze            Hodnota Hodn
+03085      Urea                                                   2,80 / 8,10           4,2 mmol/L | |*|
+08556      GF CKD-EPI                                             1,00 / 3,00         1,58 ml/s/1,73| |*|
+17357      non-HDL cholesterol                                    0,00 / 3,80         3,24 mmol/L
+03364      Glukóza                                                     /               neg
+20224 MS bez patologie                                          /
+"""
+
+
+def by_name(parsed):
+    return {r["analyte"]: r for r in parsed["results"]}
+
+
+def test_parse_layout_a():
+    p = labs.parse_lab_text(TEXT_A)
+    r = by_name(p)
+    assert p["taken_on"] == "2026-02-01" and p["lab"] == "Nějaká ordinace s.r.o."
+    assert (r["Urea"]["value"], r["Urea"]["unit"], r["Urea"]["ref_low"], r["Urea"]["ref_high"]) == (5.4, "mmol/L", 2.8, 8.1)
+    assert (r["GF CKD-EPI"]["value"], r["GF CKD-EPI"]["unit"], r["GF CKD-EPI"]["ref_high"]) == (1.51, "ml/s/1,73", 3.0)
+    assert r["Hodnocení CKD dle eGFR"]["value"] is None and r["Hodnocení CKD dle eGFR"]["value_text"] == "G1"
+    assert r["Lp(a)"]["value"] == 123 and r["Lp(a)"]["ref_high"] == 75
+    assert r["Glukóza"]["value"] == 5.0                                  # krev
+    assert r["Glukóza (moč)"]["value_text"] == "neg"                     # moč má vlastní název
+    assert r["Bílkovina (moč)"]["value_text"] == "+"
+    assert r["Leukocyty (moč, sediment)"]["value"] == 4 and r["Leukocyty (moč, sediment)"]["unit"] == "elem./1µ"
+    assert p["unparsed_rows"] == []                                      # „Krevní obraz“ je jen nadpis
+
+
+def test_parse_layout_b_and_patient_data_is_ignored():
+    p = labs.parse_lab_text(TEXT_B)
+    r = by_name(p)
+    assert p["taken_on"] == "2023-12-19"
+    assert (r["Urea"]["value"], r["Urea"]["ref_low"], r["Urea"]["ref_high"]) == (4.2, 2.8, 8.1)
+    assert r["GF CKD-EPI"]["unit"] == "ml/s/1,73"                        # bez zbylého „|“
+    assert r["non-HDL cholesterol"]["value"] == 3.24 and r["non-HDL cholesterol"]["ref_high"] == 3.8
+    assert r["Glukóza (moč)"]["value_text"] == "neg" and r["Glukóza (moč)"]["ref_low"] is None
+    assert len(p["unparsed_rows"]) == 1 and "MS bez patologie" in p["unparsed_rows"][0]
+    assert "Test Pacient" not in str(p) and "000000" not in str(p)       # identifikátory pacienta se nečtou
+
+
+def test_missing_date_is_an_error():
+    with pytest.raises(labs.LabParseError):
+        labs.parse_lab_text("Výsledkový list\n03085 Urea     5,4 mmol/L   2,8 - 8,1")
+
+
+def test_duplicate_names_in_one_report_are_not_lost():
+    p = labs.parse_lab_text("Datum odběru: 01.01.2026\n11111  Něco   1 g/L   0 - 2\n22222  Něco   3 g/L   0 - 2\n")
+    assert [r["analyte"] for r in p["results"]] == ["Něco", "Něco (2)"]
+
+
+def test_preview_endpoint(client, monkeypatch):
+    monkeypatch.setattr(labs, "extract_text", lambda pdf: TEXT_A)
+    ok = client.post("/labs/import/preview", content=b"%PDF-1.4 ...", headers={"Content-Type": "application/pdf"})
+    assert ok.status_code == 200 and ok.json()["taken_on"] == "2026-02-01"
+    assert client.post("/labs/import/preview", content=b"ahoj").status_code == 400                # není PDF
+    big = b"%PDF" + b"0" * (labs.MAX_PDF_BYTES + 1)
+    assert client.post("/labs/import/preview", content=big).status_code == 413
+    assert client.get("/labs").json() == []                                                       # náhled nic neukládá
+    assert TestClient(app).post("/labs/import/preview", content=b"%PDF").status_code == 401
+
+
+def test_bulk_save_is_idempotent_and_feeds_timeline(client):
+    items = [{**r, "taken_on": "2026-02-01", "lab": "x"} for r in labs.parse_lab_text(TEXT_A)["results"]]
+    first = client.post("/labs/bulk", json={"items": items}).json()
+    assert first == {"inserted": len(items), "skipped": 0}
+    assert client.post("/labs/bulk", json={"items": items}).json() == {"inserted": 0, "skipped": len(items)}
+    rows = client.get("/labs").json()
+    lp = next(r for r in rows if r["analyte"] == "Lp(a)")
+    assert lp["out_of_range"] is True                                                             # 123 > 75
+    assert next(r for r in rows if r["analyte"] == "Urea")["out_of_range"] is False
+    tl = client.get("/timeline").json()
+    assert tl == [{"day": "2026-02-01", "type": "lab", "title": "Krevní rozbory", "count": len(items),
+                   "out_of_range_count": 1, "out_of_range": True}]
+
+
+def test_manual_lab_needs_a_value(client):
+    r = client.post("/labs", json={"taken_on": "2026-01-01", "analyte": "X"})
+    assert r.status_code == 422
+    assert client.post("/labs", json={"taken_on": "2026-01-01", "analyte": "X", "value_text": "neg"}).status_code == 201
+
+
+def test_old_lab_table_is_migrated_with_data():
+    import sqlite3, tempfile, os
+    path = os.path.join(tempfile.mkdtemp(), "old.db")
+    old = sqlite3.connect(path)
+    old.executescript("""CREATE TABLE lab_result (id INTEGER PRIMARY KEY, taken_on TEXT NOT NULL, lab TEXT NOT NULL DEFAULT '',
+        analyte TEXT NOT NULL, value REAL NOT NULL, unit TEXT NOT NULL DEFAULT '', ref_low REAL, ref_high REAL,
+        note TEXT NOT NULL DEFAULT '');
+        INSERT INTO lab_result (taken_on, analyte, value, unit) VALUES ('2025-01-01', 'Ferritin', 50, 'ug/l');""")
+    old.commit(); old.close()
+    db = connect(path)
+    assert [tuple(r) for r in db.execute("SELECT analyte, value, value_text FROM lab_result")] == [("Ferritin", 50.0, "")]
+    db.execute("INSERT INTO lab_result (taken_on, analyte, value_text) VALUES ('2025-01-02', 'Glukóza (moč)', 'neg')")
+    connect(path).close()                                                                         # druhé otevření nesmí nic rozbít
