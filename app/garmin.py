@@ -115,6 +115,25 @@ def normalize_daily(item: dict) -> list[tuple]:
     ])
 
 
+def normalize_daily_flat(item: dict) -> list[tuple]:
+    """Záložní endpoint /usersummary/daily vrací plochý objekt (jiná pole než v2)."""
+    return _rows(item.get("calendarDate"), [
+        ("steps", "count", item.get("totalSteps")),
+        ("resting_hr", "bpm", item.get("restingHeartRate")),
+        ("min_hr", "bpm", item.get("minHeartRate")),
+        ("max_hr", "bpm", item.get("maxHeartRate")),
+        ("avg_stress", "score", item.get("averageStressLevel")),
+        ("body_battery_max", "score", item.get("bodyBatteryHighestValue")),
+        ("body_battery_min", "score", item.get("bodyBatteryLowestValue")),
+        ("active_kcal", "kcal", item.get("activeKilocalories")),
+        ("total_kcal", "kcal", item.get("totalKilocalories")),
+        ("respiration_avg", "brpm", item.get("avgWakingRespirationValue")),
+        ("spo2_avg", "%", item.get("averageSpo2")),
+        ("intensity_moderate", "min", item.get("moderateIntensityMinutes")),
+        ("intensity_vigorous", "min", item.get("vigorousIntensityMinutes")),
+    ])
+
+
 def normalize_sleep(item: dict) -> list[tuple]:
     return _rows(item.get("calendarDate"), [
         ("sleep_seconds", "s", item.get("sleepTimeSeconds")),
@@ -135,11 +154,12 @@ def normalize_hrv(item: dict) -> list[tuple]:
 
 
 def _chunks(start: date, end: date, size: int) -> Iterator[tuple[date, date]]:
-    cur = start
-    while cur <= end:
-        stop = min(cur + timedelta(days=size - 1), end)
-        yield cur, stop
-        cur = stop + timedelta(days=1)
+    """Úseky po `size` dnech, od nejnovějšího (nejčerstvější data jsou nejužitečnější)."""
+    cur = end
+    while cur >= start:
+        first = max(cur - timedelta(days=size - 1), start)
+        yield first, cur
+        cur = first - timedelta(days=1)
 
 
 # ---------- synchronizace ----------
@@ -156,30 +176,74 @@ def _save(db: sqlite3.Connection, summary_type: str, payload: Any, rows: list[tu
     db.commit()
 
 
+FALLBACK_DAYS = 60       # nejvýš tolik dnů se za jedno spuštění dotáhne záložním endpointem po jednom dni
+DAILY_CHUNK = 28         # v2/dailysummaries při dlouhém období vrací HTTP 500, proto kratší úseky
+
+
 def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date) -> dict:
     stored, errors, by_type = 0, [], {}
+    fallback_budget = FALLBACK_DAYS
 
-    def run(name: str, chunk_days: int, fetch, extract, normalize):
+    def info_for(name):
+        return by_type.setdefault(name, {"days_returned": 0, "metrics_stored": 0, "metrics": {}})
+
+    def account(name, items_count, rows):
         nonlocal stored
-        info = by_type[name] = {"days_returned": 0, "metrics_stored": 0, "metrics": {}}
+        info = info_for(name)
+        stored += len(rows)
+        info["days_returned"] += items_count
+        info["metrics_stored"] += len(rows)
+        for r in rows:  # kolik dní má která metrika (bez hodnot, jen počty)
+            info["metrics"][r[1]] = info["metrics"].get(r[1], 0) + 1
+
+    def daily_fallback(a: date, b: date) -> str | None:
+        """Po jednom dni přes /usersummary/daily. Vrací text chyby, nebo None."""
+        nonlocal fallback_budget
+        fails, day = 0, b
+        while day >= a:
+            if fallback_budget <= 0:
+                return f"záložní stahování po dnech vyčerpalo limit {FALLBACK_DAYS} dnů, zkus kratší období"
+            fallback_budget -= 1
+            try:
+                item = client.get("/usersummary-service/usersummary/daily", {"calendarDate": day.isoformat()})
+            except (GarminError, httpx.HTTPError, ValueError) as e:
+                fails += 1
+                if fails >= 3:
+                    return f"záložní endpoint selhal 3× po sobě: {e}"
+            else:
+                fails = 0
+                if isinstance(item, dict):
+                    rows = normalize_daily_flat(item)
+                    _save(db, "usersummary_daily", item, rows)
+                    account("usersummary_daily", 1, rows)
+            day -= timedelta(days=1)
+        return None
+
+    def run(name, chunk_days, fetch, extract, normalize, fallback=None):
+        failed = 0
         for a, b in _chunks(start, end, chunk_days):
             try:
                 payload = fetch(a.isoformat(), b.isoformat())
                 items = extract(payload) if payload else []
                 rows = [r for it in items for r in normalize(it)]
                 _save(db, name, payload, rows)
-                stored += len(rows)
-                info["days_returned"] += len(items)
-                info["metrics_stored"] += len(rows)
-                for r in rows:  # kolik dní má která metrika (bez hodnot, jen počty)
-                    info["metrics"][r[1]] = info["metrics"].get(r[1], 0) + 1
+                account(name, len(items), rows)
+                failed = 0
             except (GarminError, httpx.HTTPError, ValueError) as e:
-                errors.append(f"{name} {a}..{b}: {e}")
-                break  # při chybě v tomto typu nemá smysl zkoušet další úseky
+                failed += 1
+                info_for(name)
+                msg = f"{name} {a}..{b}: {e}"
+                if fallback:
+                    problem = fallback(a, b)
+                    msg += " → záloha po dnech " + ("selhala: " + problem if problem else "proběhla")
+                errors.append(msg)
+                if failed >= 3 or (fallback and fallback_budget <= 0):
+                    break
 
-    run("dailysummaries", 365,
+    run("dailysummaries", DAILY_CHUNK,
         lambda a, b: client.get("/usersummary-service/v2/dailysummaries", {"startDate": a, "endDate": b}),
-        lambda p: p.get("data", []), normalize_daily)
+        lambda p: p.get("data", []), normalize_daily,
+        fallback=daily_fallback)
     run("sleep", 31,
         lambda a, b: client.get("/sleep-service/sleep/dailySleepSummariesByDate", {"startDate": a, "endDate": b}),
         lambda p: p if isinstance(p, list) else [], normalize_sleep)

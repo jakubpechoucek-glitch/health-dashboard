@@ -24,12 +24,20 @@ První spuštění s `days=365` je historický import.
 
 | Endpoint Garminu | Úsek | Uložené metriky |
 |---|---|---|
-| `/usersummary-service/v2/dailysummaries` | až 365 dní | kroky, klidový/min/max tep, stres, Body Battery, kcal, dech, SpO2, intenzivní minuty |
+| `/usersummary-service/v2/dailysummaries` | po 28 dnech (dokumentace povoluje až rok) | kroky, klidový/min/max tep, stres, Body Battery, kcal, dech, SpO2, intenzivní minuty |
 | `/sleep-service/sleep/dailySleepSummariesByDate` | max 31 dní | délka spánku, hluboký/lehký/REM/bdělost, skóre spánku, tep ve spánku |
 | `/hrv-service/hrv/daily/{od}/{do}` | po 28 dnech | HRV minulé noci a týdenní průměr |
 
 Surové odpovědi se ukládají do `garmin_raw`, takže jde mapování polí opravit a data přepočítat bez nového stahování.
 Opakované spuštění je bezpečné (UPSERT podle zdroje, metriky a dne).
+
+### Chyba HTTP 500 u denních souhrnů
+
+Při prvním ostrém spuštění za rok vrátil `v2/dailysummaries` HTTP 500, zatímco spánek a HRV prošly.
+Proto se denní souhrny stahují po 28 dnech od nejnovějších. Pokud úsek přesto selže, aplikace ho
+dotáhne **po jednom dni** přes `/usersummary-service/usersummary/daily?calendarDate=` (jiná pole,
+`normalize_daily_flat`). Záložní stahování je omezeno na 60 dnů za jedno spuštění, aby požadavek
+netrval příliš dlouho. Starší období se doplní dalšími spuštěními (např. po 30 dnech).
 
 ## Co zatím není ověřeno proti skutečnému účtu
 

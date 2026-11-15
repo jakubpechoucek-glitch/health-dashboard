@@ -140,7 +140,7 @@
       const r = await api("/garmin/sync?days=" + $("dny").value, { method: "POST" });
       if (r.errors.length) zprava(`Uloženo ${r.metrics_stored} hodnot, ale některá data se nepodařilo stáhnout: ${r.errors.join(" | ")}`, "err");
       else zprava(`Hotovo: uloženo ${r.metrics_stored} hodnot (${r.from} až ${r.to}).`, "ok");
-      const NAZVY = { dailysummaries: "Denní souhrny", sleep: "Spánek", hrv: "HRV" };
+      const NAZVY = { dailysummaries: "Denní souhrny", usersummary_daily: "Denní souhrny (po dnech)", sleep: "Spánek", hrv: "HRV" };
       const detail = Object.entries(r.by_type || {}).map(([k, v]) => `${NAZVY[k] || k}: ${v.days_returned} dní, ${v.metrics_stored} hodnot` +
         (Object.keys(v.metrics).length ? ` (${Object.entries(v.metrics).map(([m, n]) => `${m} ${n}×`).join(", ")})` : "")).join("\n");
       $("sync-detail").textContent = detail;

@@ -71,7 +71,11 @@ SLEEP = [{"calendarDate": "2026-11-14", "sleepTimeSeconds": 27000, "deepSleepSec
 HRV = {"hrvSummaries": [{"calendarDate": "2026-11-14", "lastNightAvg": 48, "weeklyAvg": 50}]}
 
 
-def make_garmin(calls, token_status=200, data_status=200):
+FLAT = {"calendarDate": "2026-11-14", "totalSteps": 8000, "restingHeartRate": 51,
+        "averageStressLevel": 28, "bodyBatteryHighestValue": 85, "activeKilocalories": 500}
+
+
+def make_garmin(calls, token_status=200, data_status=200, v2_status=200):
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append((request.method, request.url.path, request.headers.get("authorization")))
         if request.url.path.endswith("/personal-api-key/token"):
@@ -79,7 +83,9 @@ def make_garmin(calls, token_status=200, data_status=200):
         if data_status != 200:
             return httpx.Response(data_status)
         if "dailysummaries" in request.url.path:
-            return httpx.Response(200, json=DAILY)
+            return httpx.Response(v2_status, json=DAILY) if v2_status == 200 else httpx.Response(v2_status)
+        if request.url.path.endswith("/usersummary/daily"):
+            return httpx.Response(200, json={**FLAT, "calendarDate": request.url.params["calendarDate"]})
         if "sleep" in request.url.path:
             return httpx.Response(200, json=SLEEP)
         return httpx.Response(200, json=HRV)
@@ -135,3 +141,30 @@ def test_sync_reports_errors_without_leaking_key(client):
 def test_sync_without_api_key_is_503(client):
     app.dependency_overrides[get_settings] = lambda: Settings(allowed_emails="ja@example.com")
     assert client.post("/garmin/sync").status_code == 503
+
+
+def test_sync_falls_back_to_per_day_when_v2_returns_500(client):
+    """Skutečný případ: v2/dailysummaries vrací 500, kroky a tep se dotáhnou po dnech."""
+    garmin._token_cache.update(token=None, exp=0.0)
+    calls = []
+    app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
+        transport=httpx.MockTransport(make_garmin(calls, v2_status=500)))
+    r = client.post("/garmin/sync", params={"days": 3}).json()
+    app.dependency_overrides.pop(garmin.get_http, None)
+    steps = client.get("/metrics", params={"metric": "steps"}).json()
+    assert len(steps) == 3 and {m["value"] for m in steps} == {8000.0}   # 3 dny po jednom
+    assert client.get("/metrics", params={"metric": "body_battery_max"}).json()[0]["value"] == 85
+    assert r["by_type"]["usersummary_daily"]["days_returned"] == 3
+    assert any("HTTP 500" in e and "záloha po dnech proběhla" in e for e in r["errors"])
+    assert sum(1 for c in calls if c[1].endswith("/usersummary/daily")) == 3
+
+
+def test_fallback_budget_is_capped(client, monkeypatch):
+    monkeypatch.setattr(garmin, "FALLBACK_DAYS", 2)
+    garmin._token_cache.update(token=None, exp=0.0)
+    app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
+        transport=httpx.MockTransport(make_garmin([], v2_status=500)))
+    r = client.post("/garmin/sync", params={"days": 10}).json()
+    app.dependency_overrides.pop(garmin.get_http, None)
+    assert len(client.get("/metrics", params={"metric": "steps"}).json()) == 2
+    assert any("limit" in e for e in r["errors"])
