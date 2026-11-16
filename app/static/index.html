@@ -11,7 +11,7 @@
     --bg:#f4f2ee; --text:#0b0b0b; --muted:#52514e; --line:#dedad2; --tile:#ffffff;
     --surface-1:#fcfcfb; --text-secondary:#52514e; --text-muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --series-1:#2a78d6; --series-1-hover:#5598e7;
-    --err:#b3261e; --ok:#006300;
+    --err:#b3261e; --ok:#006300; --warn:#8a4b00;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -19,7 +19,7 @@
       --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
       --surface-1:#1a1a19; --text-secondary:#c3c2b7;
       --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
-      --err:#ff8a80; --ok:#0ca30c;
+      --err:#ff8a80; --ok:#0ca30c; --warn:#f0a35c;
     }
   }
   :root[data-theme="dark"] {
@@ -27,7 +27,7 @@
     --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
     --surface-1:#1a1a19; --text-secondary:#c3c2b7;
     --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
-    --err:#ff8a80; --ok:#0ca30c;
+    --err:#ff8a80; --ok:#0ca30c; --warn:#f0a35c;
   }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
@@ -119,6 +119,22 @@
   .kpi-cislo { font-size:1.7rem; font-weight:600; line-height:1.2; }
   .kpi-text { font-size:.85rem; color:var(--text-secondary); }
   .kpi-mimo .kpi-cislo { color:var(--err); } .kpi-lepsi .kpi-cislo { color:var(--ok); } .kpi-horsi .kpi-cislo { color:var(--err); }
+  /* genetika */
+  .gen-zprava { color:var(--text-secondary); margin:0 0 10px; }
+  .gen-oblast h3 { font-size:1.05rem; margin:24px 0 6px; }
+  .gen-oblast h4 { font-size:.95rem; margin:16px 0 6px; color:var(--text-secondary); }
+  .gen-karta { background:var(--surface-1); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px; }
+  .gen-hlava { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; }
+  .gen-nazev { font-weight:600; }
+  .gen-geny { color:var(--text-secondary); font-size:.85rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .gen-uroven { font-size:.82rem; font-weight:600; white-space:nowrap; }
+  .gen-uroven.mirne, .gen-uroven.zvysene { color:var(--warn); } .gen-uroven.bez { color:var(--ok); } .gen-uroven.info { color:var(--series-1); }
+  .gen-vysledek { margin:8px 0 4px; }
+  .gen-karta details, .gen-oblast > details { margin-top:6px; }
+  .gen-karta summary, .gen-oblast > details > summary { cursor:pointer; color:var(--text-secondary); font-size:.9rem; }
+  .gen-text p { margin:6px 0; } .gen-text ul { margin:6px 0; padding-left:20px; }
+  .gen-souhrn .gen-karta > details[open] > summary { color:var(--text); }
+  .kpi-mirne .kpi-cislo { color:var(--warn); } .kpi-bez .kpi-cislo { color:var(--ok); } .kpi-info .kpi-cislo { color:var(--series-1); }
   .legenda .lg { display:inline-block; vertical-align:middle; margin:0 2px; }
   .lg-pas { width:22px; height:10px; border-radius:5px; background:color-mix(in srgb, var(--series-1) 17%, transparent); border:1px solid color-mix(in srgb, var(--series-1) 40%, transparent); }
   .lg-star { width:10px; height:10px; border-radius:50%; border:2px solid var(--series-1); background:var(--surface-1); }
@@ -205,6 +221,7 @@
   <div class="zalozky" role="tablist" aria-label="Sekce stránky">
     <button type="button" role="tab" id="tab-garmin" aria-controls="panel-garmin" aria-selected="true">Garmin</button>
     <button type="button" role="tab" id="tab-rozbory" aria-controls="panel-rozbory" aria-selected="false" tabindex="-1">Krevní rozbory</button>
+    <button type="button" role="tab" id="tab-genetika" aria-controls="panel-genetika" aria-selected="false" tabindex="-1">Genetika</button>
     <button type="button" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Události a data</button>
   </div>
 
@@ -299,6 +316,26 @@
         <div class="tablewrap" id="rozbory-wrap" hidden><table id="rozbory-tab"></table></div>
       </div>
       <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
+    </section>
+  </div>
+
+  <div role="tabpanel" id="panel-genetika" aria-labelledby="tab-genetika" tabindex="0" hidden>
+    <section aria-labelledby="gen-nadpis">
+      <h2 id="gen-nadpis">Genetická vyšetření</h2>
+      <div class="bar">
+        <label class="nahrat"><input type="file" id="gen-soubor" accept="application/json,.json"><span>Nahrát výsledky (JSON)</span></label>
+        <span class="msg" id="gen-stav" role="status"></span>
+      </div>
+      <p class="msg" id="gen-prazdna" hidden>Pro tuto osobu zatím nejsou uložená žádná genetická vyšetření.</p>
+      <div id="gen-obsah" hidden>
+        <p class="gen-zprava" id="gen-zprava"></p>
+        <div class="kpi" id="gen-kpi" role="group" aria-label="Filtr podle výsledku"></div>
+        <div class="bar"><button type="button" id="gen-rozbalit">Rozbalit vše</button></div>
+        <p class="msg">Přepis výsledků a doporučení ze zprávy laboratoře. Úroveň u každého vyšetření vychází z formulace laboratoře
+          („mírně zvyšuje riziko“, „riziko se nemění“). Genetická predispozice není diagnóza; výklad patří lékaři nebo klinickému genetikovi.</p>
+        <div id="gen-souhrn" class="gen-souhrn"></div>
+        <div id="gen-vysetreni"></div>
+      </div>
     </section>
   </div>
 
@@ -708,7 +745,7 @@
   async function vyberOsobu(id) {
     if (id === stav.osoba) return;
     stav.osoba = id; ulozit("osoba", String(id)); zavriNahled(); $("pdf-stav").textContent = "";
-    stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = [];
+    stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = []; stav.genFiltr = "vse"; stav.genetika = [];
     vykresliOsoby();
     stav.garmin = null; stav.katalog = []; stav.pripnute = []; stav.aktivity = []; stav.metriky = [];
     popisTlacitka();
@@ -754,18 +791,26 @@
 
   // Seskupení a interpretace. Každý ukazatel se čte jinak: u cholesterolu je lepší méně, u HDL více, u většiny je cílem rozmezí.
   const SKUPINY = [
+    ["Tělo a krevní tlak", /^(Hmotnost|Výška|BMI|Krevní tlak systolický|Krevní tlak diastolický|Tepová frekvence klidová)$/],
     ["Moč", /\(moč/],
+    ["Stolice", /\(stolice/],
     ["Ledviny", /^(Urea|Kreatinin|GF CKD-EPI|Hodnocení CKD dle eGFR|Kyselina močová)$/],
     ["Elektrolyty", /^(Na - natrium|K - kalium|Cl - chloridy)$/],
     ["Játra a bílkoviny", /^(Bilirubin celk\.|ALT|AST|GGT|ALP|FIB-4 index|Celk\.bílkovina)$/],
-    ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
+    ["Svaly", /^CK$/],
+    ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|VLDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
     ["Cukr", /^Glukóza$/],
     ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW|MPV|PDW|Normoblasty)\b/],
-    ["Krevní obraz: diferenciál", /^(Neutrofily|Eozinofily|Bazofily|Lymfocyty|Monocyty|Nezralé granulocyty)/],
+    // EUC píše Eosinofily/Basofily, ostatní laboratoře Eozinofily/Bazofily
+    ["Krevní obraz: diferenciál", /^(Neutrofily|Eozinofily|Eosinofily|Bazofily|Basofily|Lymfocyty|Monocyty|Nezralé granulocyty)/],
     ["Prostata", /^PSA$/],
     ["Štítná žláza", /^(TSH|fT4)$/],
     ["Vitamíny a minerály", /^(25-OH vitamin D|Mg - hořčík)$/],
     ["Slinivka a trávení", /^Lipáza$/],
+    ["Infekce a nádorové markery", /^(HBsAg|Anti-HBs|CA 19-9)$/],
+    ["Srdce: EKG, echo a zátěžový test", /^(EKG|Echo|Zátěžový test):/],
+    ["Kosti (denzitometrie)", /^DXA /],
+    ["Složení těla (DXA)", /^Složení těla:/],
   ];
 
   // ---------- vysvětlivky ukazatelů (obecná informace pro orientaci, ne výklad výsledku) ----------
@@ -841,14 +886,73 @@
     "Monocyty": ["Monocyty", "Druh bílých krvinek, které pohlcují mikroby a zbytky buněk.", "infekce, zánět, období zotavování", "obvykle bez významu"],
     "Nezralé granulocyty": ["Nezralé granulocyty", "Nezralé formy bílých krvinek, které se při zvýšené potřebě dostávají do krve dřív.", "výrazný zánět nebo infekce, stres, těhotenství", "obvykle bez významu"],
   };
+  const DIFER_EUC = { Eozinofily: "Eosinofily", Bazofily: "Basofily" };           // EUC Lab píše jména se „s“
   for (const [zaklad, [jmeno, co, vyssi, nizsi]] of Object.entries(DIFER)) {
-    VYSVETLENI[zaklad] = { jmeno: `${jmeno} (podíl z leukocytů)`, co, vyssi, nizsi };
-    for (const nazev of [`${zaklad} abs. počet`, `${zaklad} abs.počet`]) VYSVETLENI[nazev] = { jmeno: `${jmeno} (absolutní počet)`, co, vyssi, nizsi };
+    const zaklady = [zaklad, ...(DIFER_EUC[zaklad] ? [DIFER_EUC[zaklad]] : [])];
+    for (const z of zaklady) {
+      VYSVETLENI[z] = { jmeno: `${jmeno} (podíl z leukocytů)`, co, vyssi, nizsi };
+      for (const nazev of [`${z} abs. počet`, `${z} abs.počet`, `${z} abs.`]) VYSVETLENI[nazev] = { jmeno: `${jmeno} (absolutní počet)`, co, vyssi, nizsi };
+    }
   }
+
+  // Vyšetření mimo krevní rozbory (prohlídky, denzitometrie, kardiologie) a ukazatele dalších laboratoří.
+  Object.assign(VYSVETLENI, {
+    "CK": { jmeno: "CK (kreatinkináza)", co: "Enzym ve svalech, včetně srdečního svalu. Při poškození svalových buněk se uvolňuje do krve.", vyssi: "intenzivní cvičení nebo námaha v předchozích dnech, svalové poranění, injekce do svalu, některé léky (statiny), onemocnění svalů" },
+    "VLDL cholesterol": { jmeno: "VLDL cholesterol", co: "Cholesterol v částicích, které z jater rozvážejí hlavně triacylglyceroly. Obvykle se nepočítá přímo, ale odhaduje z triacylglycerolů.", vyssi: "vysoké triacylglyceroly, nadbytek cukrů a alkoholu, nadváha" },
+    "HBsAg": { jmeno: "HBsAg (povrchový antigen viru hepatitidy B)", co: "Bílkovina z obalu viru hepatitidy B. Nereaktivní (nízký) výsledek znamená, že v krvi není známka probíhající infekce.", vyssi: "reaktivní výsledek: probíhající nebo chronická infekce hepatitidou B (potvrzuje lékař)" },
+    "Anti-HBs": { jmeno: "Anti-HBs (protilátky proti hepatitidě B)", co: "Protilátky po očkování nebo prodělané hepatitidě B. Hodnota 10 IU/l a víc znamená ochranu.", nizsi: "pod 10 IU/l: chybí ochrana proti hepatitidě B (nebyla očkována nebo protilátky po letech poklesly); lékař může doporučit očkování nebo posilující dávku" },
+    "CA 19-9": { jmeno: "CA 19-9 (nádorový marker)", co: "Bílkovina, která se sleduje hlavně u nádorů slinivky a trávicího ústrojí. Jako samostatný screening není spolehlivá, normální hodnota nádor nevylučuje.", vyssi: "záněty slinivky a žlučových cest, ucpání žlučovodu, některé nádory" },
+    "FIT – okultní krvácení (stolice)": { jmeno: "FIT (imunochemický test na skryté krvácení ve stolici)", co: "Hledá lidský hemoglobin ve stolici. Slouží ke screeningu rakoviny tlustého střeva a konečníku. Negativní výsledek je v pořádku.", vyssi: "pozitivní: krvácení v trávicím traktu (polypy, hemoroidy, záněty, nádor); obvykle následuje kolonoskopie" },
+    "Barva (moč)": { jmeno: "Barva moči", co: "Obvykle žlutá. Tmavší moč bývá koncentrovanější, často při menším pití." },
+    "Zákal (moč)": { jmeno: "Zákal moči", co: "Normální moč je čirá. Zákal mohou způsobit buňky, bakterie, hlen nebo krystaly, ale i odběr či stání vzorku." },
+    "Kulovité epitelie (moč, sediment)": { jmeno: "Kulovité (renální a přechodné) epitelie v sedimentu", co: "Buňky z hlubších částí močových cest. V malém množství jsou běžné.", vyssi: "zánět nebo podráždění močových cest" },
+    "Krystaly oxalátu vápenatého (moč, sediment)": { jmeno: "Krystaly šťavelanu (oxalátu) vápenatého", co: "Krystaly, které se tvoří v koncentrované moči a po jídle bohatém na šťavelany (špenát, rebarbora, ořechy, čaj). Ojedinělý nález obvykle nemá význam.", vyssi: "opakovaný hojný nález: sklon k ledvinovým kamenům, málo tekutin" },
+    "Barva (stolice)": { jmeno: "Barva stolice", co: "Obvykle hnědá, ovlivňuje ji strava a žluč." },
+    "Konzistence (stolice)": { jmeno: "Konzistence stolice", co: "Formovaná nebo měkká stolice je normální." },
+    "Leukocyty (stolice)": { jmeno: "Leukocyty (hnisavé buňky) ve stolici", co: "Bílé krvinky ve stolici pod mikroskopem; 0–1 v zorném poli je normální.", vyssi: "zánět střeva nebo bakteriální průjem" },
+    "Erytrocyty (stolice)": { jmeno: "Erytrocyty ve stolici", co: "Červené krvinky ve stolici pod mikroskopem.", vyssi: "krvácení v dolní části trávicího traktu (např. hemoroidy, zánět)" },
+    "Vajíčka parazitů (stolice)": { jmeno: "Vajíčka a cysty parazitů ve stolici", co: "Mikroskopické hledání střevních parazitů. „Nenalezena“ je normální nález." },
+    "Hmotnost": { jmeno: "Tělesná hmotnost", co: "Hmotnost naměřená při vyšetření (může se mírně lišit podle váhy, oblečení a denní doby)." },
+    "Výška": { jmeno: "Tělesná výška", co: "Výška naměřená při vyšetření." },
+    "BMI": { jmeno: "BMI (index tělesné hmotnosti)", co: "Hmotnost v kg dělená druhou mocninou výšky v metrech. Pásmo 18,5 až 24,9 je normální hmotnost. Nerozlišuje svaly a tuk.", vyssi: "nadváha (25–29,9) nebo obezita (30 a víc)", nizsi: "podváha (pod 18,5)" },
+    "Krevní tlak systolický": { jmeno: "Krevní tlak systolický (horní)", co: "Tlak v tepnách při stahu srdce. Optimální je pod 120 mmHg, vysoký od 140 mmHg (při opakovaném měření).", vyssi: "hypertenze, stres, bolest, káva, měření hned po námaze", nizsi: "nízký tlak; u zdravých štíhlých lidí často bez obtíží" },
+    "Krevní tlak diastolický": { jmeno: "Krevní tlak diastolický (dolní)", co: "Tlak v tepnách mezi stahy srdce. Optimální je pod 80 mmHg, vysoký od 90 mmHg.", vyssi: "hypertenze", nizsi: "nízký tlak" },
+    "Tepová frekvence klidová": { jmeno: "Klidová tepová frekvence", co: "Počet úderů srdce za minutu v klidu. U dospělých zhruba 50 až 100, u trénovaných lidí bývá nižší.", vyssi: "stres, nervozita při vyšetření, káva, horečka, nedostatek tekutin, nižší kondice", nizsi: "dobrá vytrvalostní kondice; u netrénovaných lidí případně porucha převodu (posoudí lékař)" },
+    "Zátěžový test: výkon": { jmeno: "Zátěžový test: dosažený výkon (MET)", co: "Maximální zátěž na běhacím pásu podle Bruceova protokolu v násobcích klidového metabolismu (MET). Čím víc, tím lepší kondice; nad 10 MET je dobrá kapacita." },
+    "Zátěžový test: % cílové tepové frekvence": { jmeno: "Zátěžový test: dosažená tepová frekvence", co: "Kolik procent cílové (věkem odhadnuté maximální) tepové frekvence se dosáhlo. Za dostatečnou zátěž se obvykle považuje 85 % a víc." },
+    "Zátěžový test: délka": { jmeno: "Zátěžový test: délka zátěže", co: "Jak dlouho test na běhacím pásu trval. Delší čas znamená lepší výkon." },
+    "Zátěžový test: max. tepová frekvence": { jmeno: "Zátěžový test: nejvyšší tepová frekvence", co: "Nejvyšší tepová frekvence dosažená na konci zátěže." },
+    "EKG: PQ interval": { jmeno: "PQ interval na EKG", co: "Doba převodu vzruchu ze síní na komory. Normálně 120 až 200 ms.", vyssi: "zpomalené vedení (AV blokáda 1. stupně), některé léky", nizsi: "zkrácené vedení (posoudí lékař)" },
+    "EKG: QRS": { jmeno: "Šíře komplexu QRS na EKG", co: "Doba šíření vzruchu komorami. Normálně do 100 až 120 ms.", vyssi: "blokáda Tawarova raménka nebo jiná porucha vedení" },
+    "EKG: QTc": { jmeno: "QTc (korigovaný interval QT)", co: "Doba elektrického zotavení komor přepočtená na tepovou frekvenci. U žen je normální zhruba do 460 ms.", vyssi: "prodloužený QT: riziko poruch rytmu; přispívají některé léky, nízký draslík nebo hořčík, vrozené dispozice" },
+    "Echo: ejekční frakce LK": { jmeno: "Ejekční frakce levé komory (EF)", co: "Kolik procent krve levá komora vypudí při stahu. Normální je zhruba 55 % a víc.", nizsi: "snížená čerpací funkce srdce" },
+    "Echo: LAVI (objem levé síně)": { jmeno: "LAVI (objem levé síně na plochu těla)", co: "Velikost levé síně. Normálně do 34 ml/m².", vyssi: "zvětšená levá síň (např. dlouhodobě vysoký tlak, chlopenní vada); u sportovců může být mírně větší" },
+    "Echo: TAPSE": { jmeno: "TAPSE (pohyb trojcípé chlopně)", co: "Ukazatel funkce pravé komory. Normálně 17 mm a víc.", nizsi: "snížená funkce pravé komory" },
+  });
+  const DXA_TSKORE = { co: "Porovnání hustoty kosti s mladými zdravými dospělými ve směrodatných odchylkách (SD). Podle WHO: −1,0 a výš je normální, mezi −1,0 a −2,5 osteopénie, −2,5 a níž osteoporóza.", nizsi: "úbytek kostní hmoty a vyšší riziko zlomenin; podílí se pokles estrogenů v menopauze, nedostatek vitaminu D, vápníku a pohybu, dědičnost" };
+  const DXA_BMD = { co: "Plošná hustota kostního minerálu (g/cm²) naměřená denzitometrem. Porovnávat v čase jde jen na stejném přístroji; pro hodnocení slouží T-skóre.", nizsi: "úbytek kostní hmoty" };
+  const SLOZENI = {
+    "tuk": ["Podíl tělesného tuku", "Kolik procent hmotnosti tvoří tuk. U žen kolem 50 let bývá běžně zhruba 25 až 38 %."],
+    "tuková hmota": ["Tuková hmota", "Hmotnost veškerého tuku v těle."],
+    "svalová (netuková) hmota": ["Netuková (svalová) hmota", "Svaly, orgány a tekutiny bez tuku a kostí. Udržení svalů s věkem chrání před pády a zlomeninami."],
+    "podíl svalové tkáně": ["Podíl netukové tkáně", "Kolik procent měkkých tkání tvoří netuková hmota."],
+    "tuk android (břicho)": ["Tuk v oblasti břicha (android)", "Podíl tuku v oblasti pasu. Břišní tuk je spojen s vyšším rizikem srdečních a metabolických nemocí."],
+    "tuk gynoid (boky)": ["Tuk v oblasti boků (gynoid)", "Podíl tuku v oblasti boků a stehen. Z hlediska rizika je příznivější než břišní tuk."],
+    "poměr A/G": ["Poměr tuku android/gynoid", "Poměr břišního tuku k tuku na bocích. U žen je ideální pod 0,8, vyšší hodnota znamená vyšší kardiovaskulární riziko."],
+    "RSMI (svalový index končetin)": ["RSMI (relativní index kosterních svalů)", "Netuková hmota paží a nohou dělená druhou mocninou výšky. U žen pod 5,5 kg/m² ukazuje na nízkou svalovou hmotu (riziko sarkopenie)."],
+    "klidový metabolismus (RMR)": ["Klidový metabolismus", "Odhad energie, kterou tělo spotřebuje za den v úplném klidu."],
+  };
+  for (const [k, [jmeno, co]] of Object.entries(SLOZENI)) VYSVETLENI[`Složení těla: ${k}`] = { jmeno, co };
+  for (const misto of ["bederní páteř L1-L3", "bederní páteř L1-L4", "krček femuru vlevo", "krček femuru vpravo", "proximální femur vlevo", "proximální femur vpravo", "celé tělo"]) {
+    VYSVETLENI[`DXA T-skóre ${misto}`] = { jmeno: `T-skóre: ${misto}`, ...DXA_TSKORE };
+    VYSVETLENI[`DXA BMD ${misto}`] = { jmeno: `Hustota kosti (BMD): ${misto}`, ...DXA_BMD };
+  }
+
   const skupinaPro = (a) => (SKUPINY.find(([, re]) => re.test(a)) || ["Ostatní"])[0];
   const MODY = { rozmezi: "v rozmezí je v pořádku", nizsi: "nižší je lepší", vyssi: "vyšší je lepší", nehodnotit: "nehodnotit změnu" };
-  const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index)$/.test(a) ? "nizsi"
-    : /^(HDL cholesterol|GF CKD-EPI)$/.test(a) ? "vyssi" : "rozmezi");
+  const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|VLDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index|Složení těla: (tuk|tuková hmota|tuk android \(břicho\)|poměr A\/G))$/.test(a) ? "nizsi"
+    : /^(HDL cholesterol|GF CKD-EPI|Anti-HBs|DXA .*|Složení těla: (svalová \(netuková\) hmota|RSMI \(svalový index končetin\))|Zátěžový test: (výkon|délka))$/.test(a) ? "vyssi"
+    : /^(Hmotnost|Výška|Složení těla: (tuk gynoid \(boky\)|podíl svalové tkáně|klidový metabolismus \(RMR\))|Zátěžový test: .*|EKG: .*|Echo: .*)$/.test(a) ? "nehodnotit" : "rozmezi");
   const modPro = (a) => stav.nastaveni[a] || vychoziMod(a);
 
   const zona = (v, lo, hi) => (lo != null && v < lo ? -1 : hi != null && v > hi ? 1 : 0);          // -1 pod, 0 v rozmezí, 1 nad
@@ -1293,12 +1397,12 @@
         stav.pripnute = Array.isArray(p) ? p : [];
         await nactiAktivity().catch(() => { stav.aktivity = []; });
       } else { stav.katalog = []; stav.pripnute = []; stav.aktivity = []; }
-      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), maGarmin() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
+      const [osa, metriky, rozbory, nastaveni, genetika] = await Promise.all([api("/timeline" + q), maGarmin() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({})), api("/genetics" + q).catch(() => [])]);
       stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
       const garminOk = !!(stav.garmin && stav.garmin.key_configured);
       $("stav").textContent = ""; $("ovladani").hidden = !garminOk; $("hist-radek").hidden = !garminOk;
-      vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
+      vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory); vykresliGenetiku(genetika);
       api("/status").then(vykresliStav).catch(() => {});
       vykresliAuto(stav.garmin || { key_configured: false, key_variable: "GARMIN_API_KEY", auto: { enabled: false } });
     } finally { $("grafy").classList.remove("nacitam"); }
@@ -1394,8 +1498,108 @@
   };
 
 
+  // ---------- genetika ----------
+  const UROVNE = { mirne: "⚠ mírně zvýšené riziko", zvysene: "⚠ zvýšené riziko", bez: "✓ bez zvýšeného rizika", info: "ℹ informace pro životosprávu" };
+  const GEN_FILTRY = [["vse", "Všechna vyšetření", ""], ["mirne", "Mírně zvýšené riziko", "kpi-mirne"], ["bez", "Bez zvýšeného rizika", "kpi-bez"], ["info", "Informace", "kpi-info"]];
+  stav.genetika = []; stav.genFiltr = "vse";
+  // Text ze zprávy: odstavce oddělené prázdným řádkem, řádky začínající „• “ jsou odrážky. Vždy přes textContent.
+  function textBlok(text) {
+    const box = document.createElement("div"); box.className = "gen-text";
+    for (const odst of (text || "").split(/\n\s*\n/)) {
+      const radky = odst.split("\n").map((r) => r.trim()).filter(Boolean); if (!radky.length) continue;
+      let ul = null;
+      for (const r of radky) {
+        if (r.startsWith("• ")) { if (!ul) { ul = document.createElement("ul"); box.append(ul); } const li = document.createElement("li"); li.textContent = r.slice(2); ul.append(li); }
+        else { ul = null; const p = document.createElement("p"); p.textContent = r; box.append(p); }
+      }
+    }
+    return box;
+  }
+  function rozbalovaci(nadpis, text, otevreno) {
+    const d = document.createElement("details"); if (otevreno) d.open = true;
+    const s = document.createElement("summary"); s.textContent = nadpis; d.append(s, textBlok(text)); return d;
+  }
+  const genDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
+  function vykresliGenetiku(polozky) {
+    if (polozky) stav.genetika = polozky;
+    const vse = stav.genetika, vysetreni = vse.filter((i) => i.kind === "vysetreni");
+    $("gen-prazdna").hidden = vse.length > 0; $("gen-obsah").hidden = !vse.length;
+    if (!vse.length) return;
+    const zpravy = [...new Map(vse.map((i) => [i.lab + i.report_date, i])).values()];
+    $("gen-zprava").textContent = zpravy.map((z) => `${z.lab || "Laboratoř neuvedena"}, ${genDatum(z.report_date)}`).join(" · ") + ` · ${vysetreni.length} vyšetření`;
+    const kpi = $("gen-kpi"); kpi.replaceChildren();
+    for (const [klic, popis, trida] of GEN_FILTRY) {
+      const n = klic === "vse" ? vysetreni.length : vysetreni.filter((i) => i.level === klic || (klic === "mirne" && i.level === "zvysene")).length;
+      const b = document.createElement("button"); b.type = "button"; b.className = "kpi-dlazdice " + trida; b.setAttribute("aria-pressed", String(stav.genFiltr === klic));
+      const c = document.createElement("span"); c.className = "kpi-cislo"; c.textContent = n;
+      const t = document.createElement("span"); t.className = "kpi-text"; t.textContent = popis;
+      b.append(c, t); b.addEventListener("click", () => { stav.genFiltr = klic; vykresliGenetiku(); }); kpi.append(b);
+    }
+    // souhrnná zpráva klinického genetika
+    const souhrn = $("gen-souhrn"); souhrn.replaceChildren();
+    const souhrny = vse.filter((i) => i.kind === "souhrn");
+    if (souhrny.length && stav.genFiltr === "vse") {
+      const h = document.createElement("h3"); h.textContent = souhrny[0].section || "Souhrnná zpráva"; souhrn.append(h);
+      const pozn = document.createElement("p"); pozn.className = "msg"; pozn.textContent = `${souhrny[0].lab}, ${genDatum(souhrny[0].report_date)}`; souhrn.append(pozn);
+      for (const s of souhrny) { const k = document.createElement("div"); k.className = "gen-karta"; k.append(rozbalovaci(s.title, s.result, false)); souhrn.append(k); }
+    }
+    // jednotlivá vyšetření po oblastech a skupinách, úvodní texty oblastí jako rozbalovací „O oblasti“
+    const host = $("gen-vysetreni"); host.replaceChildren();
+    const vybrana = (i) => stav.genFiltr === "vse" || i.level === stav.genFiltr || (stav.genFiltr === "mirne" && i.level === "zvysene");
+    const oblasti = [...new Set(vse.filter((i) => i.kind !== "souhrn").map((i) => i.section))];
+    for (const oblast of oblasti) {
+      const vOblasti = vse.filter((i) => i.kind !== "souhrn" && i.section === oblast);
+      if (!vOblasti.some((i) => i.kind === "vysetreni" && vybrana(i))) continue;
+      const box = document.createElement("div"); box.className = "gen-oblast";
+      const h = document.createElement("h3"); h.textContent = oblast || "Ostatní"; box.append(h);
+      let skupina = null;
+      for (const i of vOblasti) {
+        if (i.kind === "uvod") {
+          if (stav.genFiltr !== "vse") continue;
+          if (i.grp && i.grp !== skupina) { skupina = i.grp; const h4 = document.createElement("h4"); h4.textContent = i.grp; box.append(h4); }
+          box.append(rozbalovaci(i.grp ? "O skupině: " + i.grp : "O oblasti: " + oblast, i.description, false)); continue;
+        }
+        if (!vybrana(i)) continue;
+        if (i.grp !== skupina && i.grp) { skupina = i.grp; const h4 = document.createElement("h4"); h4.textContent = i.grp; box.append(h4); }
+        if (!i.grp) skupina = null;
+        const k = document.createElement("article"); k.className = "gen-karta";
+        const hl = document.createElement("div"); hl.className = "gen-hlava";
+        const nazev = document.createElement("div");
+        const n = document.createElement("span"); n.className = "gen-nazev"; n.textContent = i.title; nazev.append(n);
+        if (i.genes) { const g = document.createElement("div"); g.className = "gen-geny"; g.textContent = "Geny: " + i.genes; nazev.append(g); }
+        hl.append(nazev);
+        if (i.level) { const u = document.createElement("span"); u.className = "gen-uroven " + i.level; u.textContent = UROVNE[i.level] || i.level; hl.append(u); }
+        k.append(hl);
+        const v = textBlok(i.result); v.classList.add("gen-vysledek"); k.append(v);
+        if (i.recommendation) k.append(rozbalovaci("Komentář a doporučení", i.recommendation, false));
+        if (i.description) k.append(rozbalovaci("O vyšetření", i.description, false));
+        box.append(k);
+      }
+      host.append(box);
+    }
+  }
+  // Import přepsané zprávy ze souboru JSON ({"genetics": [...]} nebo {"items": [...]}). Ukládá se vždy vybrané osobě.
+  $("gen-soubor").addEventListener("change", async (e) => {
+    const soubor = e.target.files[0]; e.target.value = ""; if (!soubor) return;
+    const st = $("gen-stav"); st.className = "msg"; st.textContent = "";
+    try {
+      if (!stav.osoby.length) await nactiOsoby();                      // osoba musí být známá dřív, než se uloží
+      const data = JSON.parse(await soubor.text());
+      const polozky = (Array.isArray(data) ? data : data.genetics || data.items || []).map(({ person, person_id, ...i }) => ({ ...i, person_id: stav.osoba }));
+      if (!polozky.length) throw new Error("V souboru nejsou žádné položky genetiky.");
+      if (!confirm(`Uložit ${polozky.length} položek genetiky osobě ${osobaJmeno()}? Stejné položky téže zprávy se přepíšou.`)) return;
+      const r = await api("/genetics/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: polozky }) });
+      st.textContent = `Uloženo: ${r.inserted} nových, ${r.updated} aktualizovaných.`; st.className = "msg ok";
+      vykresliGenetiku(await api("/genetics?person_id=" + stav.osoba));
+    } catch (err) { st.textContent = err instanceof SyntaxError ? "Soubor není platný JSON." : err.message; st.className = "msg err"; }
+  });
+  $("gen-rozbalit").addEventListener("click", () => {
+    const vse = [...document.querySelectorAll("#panel-genetika details")], otevrit = vse.some((d) => !d.open);
+    vse.forEach((d) => { d.open = otevrit; }); $("gen-rozbalit").textContent = otevrit ? "Sbalit vše" : "Rozbalit vše";
+  });
+
   // ---------- záložky ----------
-  const ZALOZKY = ["garmin", "rozbory", "data"];
+  const ZALOZKY = ["garmin", "rozbory", "genetika", "data"];
   function otevriZalozku(nazev, fokus) {
     if (!ZALOZKY.includes(nazev)) nazev = "garmin";
     for (const z of ZALOZKY) {

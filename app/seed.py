@@ -1,6 +1,6 @@
 """Jednorázové naplnění databáze z proměnné prostředí SEED_JSON_B64 (JSON v base64).
 
-Hodnota je JSON v base64, případně nejdřív zkomprimovaný zlibem (kratší, a poškození se pozná).
+Hodnota je JSON v base64 ({"persons", "labs", "events", "genetics"}), případně nejdřív zkomprimovaný zlibem (kratší, a poškození se pozná).
 Slouží k dodání dat, která nemají být v gitu (rozbory, vyšetření). Import je idempotentní: co už v databázi je, se
 přeskočí, takže proměnná může zůstat i po restartu. Po úspěšném importu ji ale smaž (data zůstanou v databázi).
 Do logu se píšou jen počty, nikdy obsah.
@@ -14,6 +14,7 @@ import zlib
 
 from pydantic import ValidationError
 
+from .genetics import GeneticIn, save_genetics
 from .labs import save_labs
 from .records import EventIn, LabIn
 
@@ -57,6 +58,7 @@ def apply_seed(db: sqlite3.Connection, b64: str) -> dict:
 
         labs = [LabIn(**i) for i in with_person(data.get("labs", []))]
         events = [EventIn(**i) for i in with_person(data.get("events", []))]
+        genetics = [GeneticIn(**i) for i in with_person(data.get("genetics", []))]
     except (binascii.Error, ValueError, TypeError, KeyError, ValidationError, zlib.error) as e:
         log.error("seed: neplatná data (%s), nic se neimportovalo", type(e).__name__)
         db.rollback()
@@ -73,6 +75,8 @@ def apply_seed(db: sqlite3.Connection, b64: str) -> dict:
                    (ev.person_id, ev.day.isoformat(), ev.kind, ev.title, ev.note))
         ev_in += 1
     db.commit()
-    result = {"labs_inserted": labs_in, "labs_skipped": labs_skip, "events_inserted": ev_in, "events_skipped": ev_skip}
+    gen_in, gen_upd = save_genetics(db, genetics)
+    result = {"labs_inserted": labs_in, "labs_skipped": labs_skip, "events_inserted": ev_in, "events_skipped": ev_skip,
+              "genetics_inserted": gen_in, "genetics_updated": gen_upd}
     log.info("seed: %s", result)
     return result

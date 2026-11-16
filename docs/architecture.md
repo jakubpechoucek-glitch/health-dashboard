@@ -23,7 +23,7 @@ ruční zadání / import PDF ─► /labs, /events ─────────�
 | `lab_result` | rozbory: analyt, číselná hodnota nebo text (`neg`, `+`), jednotka, referenční rozsah, laboratoř |
 | `health_event` | události na časové ose (`exam`, `genetics`, `medication`, `other`) |
 
-Genetika zatím existuje jako událost na časové ose (datum výsledku, odkaz na lokální soubor).
+Genetika má vlastní záložku a tabulku `genetic_item`, viz [genetics.md](genetics.md).
 Strukturovaná data variant přijdou, až bude jasný formát výsledku.
 
 ## Konvence

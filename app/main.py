@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 
-from . import garmin, labs, persons, prefs, records, status
+from . import garmin, genetics, labs, persons, prefs, records, status
 from .auth import require_auth
 from .autosync import scheduler
 from .config import get_settings
@@ -40,6 +40,7 @@ app = FastAPI(
 app.include_router(garmin.router, dependencies=[Depends(require_auth)])
 app.include_router(records.router, dependencies=[Depends(require_auth)])
 app.include_router(labs.router, dependencies=[Depends(require_auth)])
+app.include_router(genetics.router, dependencies=[Depends(require_auth)])
 app.include_router(persons.router, dependencies=[Depends(require_auth)])
 app.include_router(prefs.router, dependencies=[Depends(require_auth)])
 app.include_router(status.router, dependencies=[Depends(require_auth)])

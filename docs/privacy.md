@@ -12,8 +12,10 @@ Data jsou citlivá (zdraví, genetika) a po úniku nejdou vzít zpět.
 - **Zálohy šifrovaně** (`age`, `restic`), nikdy nešifrované do cloudu.
 - **Žádné nahrávání reálných dat** do cloudových nástrojů, ani AI asistentů. Vývoj a testy
   jen se syntetickými daty.
-- **Genetika:** surový soubor (např. VCF/TXT od laboratoře) zůstává mimo repo a ideálně na
-  šifrovaném disku. V databázi jen odkaz a závěry, které potřebuješ.
+- **Genetika:** surový soubor (např. VCF/TXT od laboratoře) ani PDF zprávy se neukládají. V databázi (tabulka
+  `genetic_item`) je přepis výsledků zprávy: vyšetření, geny, výsledek, komentář a doporučení laboratoře a souhrnná
+  zpráva klinického genetika. Je to rozhodnutí vlastníka (2026-11), protože výsledky chce mít v aplikaci celé.
+  Data importovaná přes `SEED_JSON_B64` po importu z proměnné smazat.
 - **GDPR:** vlastní data pro osobní použití jsou mimo rozsah GDPR. Pokud by aplikaci
   používal někdo další, je to nová situace (zvláštní kategorie údajů).
 

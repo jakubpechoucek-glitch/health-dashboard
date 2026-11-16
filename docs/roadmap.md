@@ -11,5 +11,6 @@
 - [x] Záložka Krevní rozbory: pruh referenčního rozmezí s oběma výsledky, směr změny a hodnocení podle interpretace ukazatele
 - [ ] Vývoj ukazatele v čase jako čára přes víc než dva odběry (až jich bude víc)
 - [ ] Slovník analytů a referenčních rozsahů
-- [ ] Genetika: formát výsledků, strukturovaný záznam, odkaz na zdrojový soubor
+- [x] Genetika: strukturovaný záznam výsledků a samostatná záložka (viz genetics.md)
+- [ ] Genetika: import zprávy z PDF v aplikaci (zatím přes seed nebo `POST /genetics/bulk`)
 - [ ] Šifrované zálohy
