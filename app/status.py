@@ -41,7 +41,8 @@ def status(db: sqlite3.Connection = Depends(get_db), settings: Settings = Depend
             {"id": r["id"], "name": r["name"],
              "labs": db.execute("SELECT COUNT(*) FROM lab_result WHERE person_id = ?", (r["id"],)).fetchone()[0],
              "lab_days": db.execute("SELECT COUNT(DISTINCT taken_on) FROM lab_result WHERE person_id = ?", (r["id"],)).fetchone()[0],
-             "events": db.execute("SELECT COUNT(*) FROM health_event WHERE person_id = ?", (r["id"],)).fetchone()[0]}
+             "events": db.execute("SELECT COUNT(*) FROM health_event WHERE person_id = ?", (r["id"],)).fetchone()[0],
+             "metric_days": db.execute("SELECT COUNT(DISTINCT day) FROM metric_daily WHERE person_id = ?", (r["id"],)).fetchone()[0]}
             for r in db.execute("SELECT id, name FROM person ORDER BY id")
         ],
     }

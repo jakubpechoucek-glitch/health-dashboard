@@ -17,6 +17,20 @@ Aplikace data **stahuje sama (pull)**. Žádný webhook ani veřejná adresa pro
 
 Garmin pošle e-mail zhruba týden před vypršením klíče. Pak je potřeba vytvořit nový klíč a vyměnit `GARMIN_API_KEY`.
 
+## Garmin pro víc osob
+
+Každá osoba má **vlastní účet v Garmin Connect, a tedy vlastní osobní API klíč**. Všechna data Garminu (metriky, aktivity, historie běhů synchronizace) jsou vedená po osobách.
+Hodinky a náramek od Garminu (např. hodinky a Vívosmart) synchronizované do **jednoho** účtu se stahují jedním klíčem, Garmin je v účtu sloučí.
+
+**Jak napojit další osobu (např. Lukáše):**
+1. V aplikaci přidej osobu (**＋ Přidat osobu**). Na záložce Garmin se u ní zobrazí přesný název proměnné, např. `GARMIN_API_KEY_2` (číslo je id osoby).
+2. Dotyčný si na webu Garmin Connect ve **svém účtu** vytvoří osobní API klíč (Personal API Key; zobrazí se jen jednou).
+3. Klíč vlož v Renderu do **Environment** jako proměnnou s tím názvem. Klíč nikomu neposílej a nepiš do chatu. Služba se restartuje.
+4. Aplikace začne za osobu stahovat sama (automatická synchronizace pro každou osobu s klíčem, nové osobě se stáhne první běh hned). Starší období stáhne **Stáhnout celou historii** (bod pro navázání se pamatuje zvlášť pro každou osobu).
+
+Vlastník aplikace (osoba 1) zůstává na proměnné `GARMIN_API_KEY`. Připnuté metriky má každá osoba své. Garmin Personal API je určené pro vlastní data každého uživatele, proto
+klíč vždy vytváří ten, komu účet patří. Osoby bez klíče vidí na záložce Garmin jen návod.
+
 ## Všechny metriky
 
 Kromě sedmi hlavních grafů aplikace ukládá **všechny číselné hodnoty**, které Garmin vrací, a zobrazuje je v katalogu (sekce **Všechny metriky z Garminu**):

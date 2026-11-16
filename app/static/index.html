@@ -457,7 +457,7 @@
     return { klic, nazev: nazevMetriky(klic), typ: sloupce ? "sloupce" : "cara", prevod, fmt, jednotka };
   }
 
-  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set(), osoby: [], osoba: 1, katalog: [], pripnute: [], aktivity: [], aktivityPocet: 30, katalogOtevreny: false };
+  const stav = { rozsah: 30, metriky: [], osa: [], tabulka: false, rozbory: [], datumy: [], nastaveni: {}, cmpNovy: null, cmpStary: null, filtrRozbory: "vse", vysvOtevrene: new Set(), osoby: [], osoba: 1, katalog: [], pripnute: [], aktivity: [], aktivityPocet: 30, katalogOtevreny: false, garmin: null };
   const NS = "http://www.w3.org/2000/svg";
   function el(tag, attrs = {}, text) {
     const e = document.createElementNS(NS, tag);
@@ -651,7 +651,7 @@
     if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
   }
 
-  function vykresliVse() { if (!jeVlastnik()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); vykresliKatalog(); vykresliAktivity(); }
+  function vykresliVse() { if (!maGarmin()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); vykresliKatalog(); vykresliAktivity(); }
 
   const DRUHY = { exam: "Vyšetření", genetics: "Genetika", medication: "Léky", other: "Jiné" };
   function vykresliOsu(data) {
@@ -710,7 +710,8 @@
     stav.osoba = id; ulozit("osoba", String(id)); zavriNahled(); $("pdf-stav").textContent = "";
     stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = [];
     vykresliOsoby();
-    if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");
+    stav.garmin = null; stav.katalog = []; stav.pripnute = []; stav.aktivity = []; stav.metriky = [];
+    popisTlacitka();
     try { await nacti(); } catch (e) { if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); } else $("stav").textContent = e.message; }
   }
   let osobaRezim = "pridat";
@@ -740,6 +741,7 @@
 
   // ---------- krevní rozbory: přehled všech ukazatelů ----------
   const jeVlastnik = () => stav.osoba === 1;
+  const maGarmin = () => !!(stav.garmin && stav.garmin.key_configured) || stav.katalog.length > 0;   // klíč nastaven, nebo už jsou data
   const osobaJmeno = () => (stav.osoby.find((o) => o.id === stav.osoba) || { name: "" }).name;
   const cisloLab = (v) => v.toLocaleString("cs-CZ", { maximumFractionDigits: 3 });        // bez zbytečných nul: 123, 5,4, 0,995
   const mimoRozsah = (r) => r.value != null && ((r.ref_low != null && r.value < r.ref_low) || (r.ref_high != null && r.value > r.ref_high));
@@ -1136,17 +1138,18 @@
   });
 
   const nactiMetriky = () => {                      // jen metriky, které se kreslí, a jen za zvolené období
-    const q = new URLSearchParams({ from: dny(stav.rozsah)[0] });
+    const q = new URLSearchParams({ person_id: stav.osoba, from: dny(stav.rozsah)[0] });
     for (const klic of new Set([...GRAFY.map((g) => g.klic), ...stav.pripnute])) q.append("metric", klic);
     return api("/metrics?" + q);
   };
 
   // ---------- katalog všech metrik a připínání grafů ----------
+  const klicPripnutych = () => `pripnute-${stav.osoba}`;        // připnuté metriky má každá osoba své
   async function pripnout(klic, zapnout) {
     const stare = [...stav.pripnute];
     stav.pripnute = zapnout ? [...new Set([...stav.pripnute, klic])] : stav.pripnute.filter((k) => k !== klic);
     try {
-      await api("/prefs/pripnute", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: stav.pripnute }) });
+      await api("/prefs/" + klicPripnutych(), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: stav.pripnute }) });
       stav.metriky = await nactiMetriky(); vykresliVse();
     } catch (e) { stav.pripnute = stare; vykresliVse(); $("sync-stav").textContent = "Výběr metrik se nepodařilo uložit: " + e.message; $("sync-stav").className = "msg err"; }
   }
@@ -1198,9 +1201,9 @@
     minElevation: "Minimální výška (m)", maxElevation: "Maximální výška (m)", avgElevation: "Průměrná výška (m)", activityName: "Název", startTimeLocal: "Začátek (místní čas)", "activityType.typeKey": "Typ" };
   function plocha(o, pre = "", out = {}) { for (const [k, v] of Object.entries(o)) { if (v == null || typeof v === "boolean") continue; if (typeof v === "object" && !Array.isArray(v)) plocha(v, pre + k + ".", out); else if (!Array.isArray(v)) out[pre + k] = v; } return out; }
 
-  async function nactiAktivity() { stav.aktivity = await api(`/garmin/activities?from=${dny(stav.rozsah)[0]}&limit=500`); }
+  async function nactiAktivity() { stav.aktivity = await api(`/garmin/activities?person_id=${stav.osoba}&from=${dny(stav.rozsah)[0]}&limit=500`); }
   function vykresliAktivity() {
-    const sekce = $("aktivity-sekce"), data = stav.aktivity; sekce.hidden = !jeVlastnik() || !data.length;
+    const sekce = $("aktivity-sekce"), data = stav.aktivity; sekce.hidden = !maGarmin() || !data.length;
     if (sekce.hidden) return;
     const celkem = data.reduce((a, x) => ({ dur: a.dur + (x.duration_s || 0), dist: a.dist + (x.distance_m || 0), kcal: a.kcal + (x.calories || 0) }), { dur: 0, dist: 0, kcal: 0 });
     $("aktivity-souhrn").textContent = `Za zvolené období ${data.length} aktivit · celkem ${hmmss(celkem.dur)} · ${cislo(celkem.dist / 1000, 1)} km · ${cislo(celkem.kcal)} kcal. Klepnutím na řádek uvidíš všechna pole od Garminu.`;
@@ -1257,17 +1260,21 @@
   const pred = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return "právě teď"; if (m < 60) return `před ${m} min`;
     const h = Math.round(m / 60); return h < 24 ? `před ${h} h` : `před ${Math.round(h / 24)} d`; };
   function vykresliAuto(st) {
-    const e = $("auto-stav"); e.hidden = !jeVlastnik(); if (!jeVlastnik()) return;
+    const e = $("auto-stav"), jmeno = osobaJmeno(), promenna = st.key_variable || "GARMIN_API_KEY"; e.hidden = false;
     let text, chyba = false;
-    if (!st.key_configured) { text = "Automatická synchronizace nemůže běžet: chybí GARMIN_API_KEY v nastavení služby."; chyba = true; }
-    else if (!st.auto.enabled) text = "Automatická synchronizace je vypnutá (AUTO_SYNC_HOURS=0).";
+    if (!st.key_configured) {
+      text = `Garmin není pro ${jmeno} napojený. Postup: ${jmeno} si na webu Garmin Connect vytvoří osobní API klíč (Personal API Key) ve svém účtu, ty ho vložíš do Renderu jako proměnnou ${promenna} (Environment) a služba se restartuje. Klíč nikomu neposílej do chatu. Data se pak začnou stahovat sama.`;
+      $("garmin-nepatri").textContent = text; $("garmin-nepatri").hidden = maGarmin(); e.hidden = true; return;
+    }
+    $("garmin-nepatri").hidden = true;
+    if (!st.auto.enabled) text = "Automatická synchronizace je vypnutá (AUTO_SYNC_HOURS=0).";
     else {
       const ok = st.last_success;
       text = `Automatická synchronizace: každých ${st.auto.interval_hours} h, pokaždé znovu stáhne posledních ${st.auto.days + 1} dní. ` +
-        (ok ? `Poslední úspěšná ${pred(ok.finished_at)}${ok.source === "manual" ? " (ruční)" : ""}, ${ok.metrics_stored} hodnot.` : "Zatím žádná neproběhla.");
+        (ok ? `Poslední úspěšná ${pred(ok.finished_at)}${ok.source === "manual" ? " (ruční)" : ""}, ${ok.metrics_stored} hodnot.` : "Zatím žádná neproběhla. Pro starší období spusť Stáhnout celou historii.");
       const a = st.last_auto;
       if (a && !a.ok && (!ok || new Date(a.finished_at) > new Date(ok.finished_at))) {
-        text += ` ⚠ Poslední automatický pokus ${pred(a.finished_at)} selhal: ${a.error || "neznámá chyba"}. Pokud to trvá, mohl vypršet API klíč: vytvoř nový v Garmin Connect a vlož ho do proměnné GARMIN_API_KEY.`;
+        text += ` ⚠ Poslední automatický pokus ${pred(a.finished_at)} selhal: ${a.error || "neznámá chyba"}. Pokud to trvá, mohl vypršet API klíč: vytvoř nový v Garmin Connect a vlož ho do proměnné ${promenna}.`;
         chyba = true;
       }
     }
@@ -1279,19 +1286,21 @@
     try {
       if (!stav.osoby.length) await nactiOsoby();
       const q = "?person_id=" + stav.osoba;
-      if (jeVlastnik()) {                                              // katalog metrik, připnuté metriky a aktivity patří k Garminu, tedy k vlastníkovi
-        const [katalog, prefs] = await Promise.all([api("/metrics/catalog").catch(() => []), api("/prefs").catch(() => ({}))]);
-        stav.katalog = katalog; stav.pripnute = Array.isArray(prefs.pripnute) ? prefs.pripnute : [];
+      stav.garmin = await api("/garmin/status" + q).catch(() => null);                 // má osoba Garmin (klíč) a v jakém je stavu
+      if (maGarmin() || (stav.garmin && stav.garmin.key_configured)) {
+        const [katalog, prefs] = await Promise.all([api("/metrics/catalog" + q).catch(() => []), api("/prefs").catch(() => ({}))]);
+        stav.katalog = katalog; const p = prefs[klicPripnutych()] ?? (jeVlastnik() ? prefs.pripnute : null);
+        stav.pripnute = Array.isArray(p) ? p : [];
         await nactiAktivity().catch(() => { stav.aktivity = []; });
-      }
-      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), jeVlastnik() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
+      } else { stav.katalog = []; stav.pripnute = []; stav.aktivity = []; }
+      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), maGarmin() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
       stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
-      $("stav").textContent = ""; $("ovladani").hidden = !jeVlastnik(); $("hist-radek").hidden = !jeVlastnik(); $("garmin-nepatri").hidden = jeVlastnik();
+      const garminOk = !!(stav.garmin && stav.garmin.key_configured);
+      $("stav").textContent = ""; $("ovladani").hidden = !garminOk; $("hist-radek").hidden = !garminOk;
       vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
-      if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");     // Garmin patří jen vlastníkovi
       api("/status").then(vykresliStav).catch(() => {});
-      if (jeVlastnik()) api("/garmin/status").then(vykresliAuto).catch(() => {}); else vykresliAuto({});
+      vykresliAuto(stav.garmin || { key_configured: false, key_variable: "GARMIN_API_KEY", auto: { enabled: false } });
     } finally { $("grafy").classList.remove("nacitam"); }
   }
 
@@ -1305,14 +1314,14 @@
   const nacist = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
   let historie = null;
 
-  function popisTlacitka() { const u = nacist("hist-end"); $("hist").textContent = u ? `⤓ Pokračovat ve stahování historie (od ${dlouzeDatum(u)})` : "⤓ Stáhnout celou historii"; }
+  function popisTlacitka() { const u = nacist(`hist-end-${stav.osoba}`); $("hist").textContent = u ? `⤓ Pokračovat ve stahování historie (od ${dlouzeDatum(u)})` : "⤓ Stáhnout celou historii"; }
   popisTlacitka();
 
   $("hist-stop").addEventListener("click", () => { if (historie) historie.stop = true; $("hist-stav").textContent = "Zastavuji po dokončení rozdělaného úseku…"; });
   $("hist").addEventListener("click", async () => {
     if (historie) return;
     let end = lokalniDen(new Date());
-    const ulozeny = nacist("hist-end");
+    const ulozeny = nacist(`hist-end-${stav.osoba}`);
     if (ulozeny && confirm(`Minule stahování skončilo u ${dlouzeDatum(ulozeny)}. Pokračovat odtud? (Zrušit = začít znovu od dneška)`)) end = ulozeny;
     else if (!ulozeny && !confirm("Stáhnout celou historii z Garminu? Stahuje se po dvouměsíčních úsecích a může to trvat několik minut. Stránku nezavírej, stahování lze kdykoli zastavit a později navázat.")) return;
 
@@ -1323,11 +1332,11 @@
         if (historie.stop) { duvod = "zastaveno"; break; }
         okno++; const od = posun(end, -(OKNO - 1));
         $("hist-stav").textContent = `Stahuji úsek ${okno}: ${dlouzeDatum(od)} – ${dlouzeDatum(end)} · uloženo zatím ${celkem} hodnot`;
-        const r = await api(`/garmin/sync?days=${OKNO}&end=${end}`, { method: "POST" });
+        const r = await api(`/garmin/sync?person_id=${stav.osoba}&days=${OKNO}&end=${end}`, { method: "POST" });
         celkem += r.metrics_stored;
         if (r.errors.length) { chybne++; chyby.push(`${od}..${end}: ${r.errors.join("; ")}`); } else chybne = 0;
         prazdne = r.metrics_stored === 0 && !r.errors.length ? prazdne + 1 : 0;
-        end = posun(od, -1); ulozit("hist-end", end);
+        end = posun(od, -1); ulozit(`hist-end-${stav.osoba}`, end);
         if (prazdne >= 3) { duvod = "hotovo"; break; }                 // tři prázdné úseky po sobě = před začátkem dat
         if (chybne >= 3) { duvod = "chyby"; break; }
         await pockej(400);
@@ -1338,7 +1347,7 @@
       if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); }
     } finally {
       historie = null; $("hist").hidden = false; $("hist-stop").hidden = true; $("sync").disabled = false;
-      if (duvod === "hotovo" || duvod === "limit") ulozit("hist-end", null);
+      if (duvod === "hotovo" || duvod === "limit") ulozit(`hist-end-${stav.osoba}`, null);
       popisTlacitka();
     }
     const konec = { hotovo: "Hotovo, starší data už Garmin nemá.", limit: "Hotovo (dosažen limit 6 let).", zastaveno: "Zastaveno, můžeš později navázat.",
@@ -1372,7 +1381,7 @@
   $("sync").onclick = async () => {
     const tl = $("sync"); tl.disabled = true; zprava("Stahuji z Garminu… u delšího období to může trvat i minutu.");
     try {
-      const r = await api("/garmin/sync?days=" + $("dny").value, { method: "POST" });
+      const r = await api(`/garmin/sync?person_id=${stav.osoba}&days=` + $("dny").value, { method: "POST" });
       if (r.errors.length) zprava(`Uloženo ${r.metrics_stored} hodnot, ale některá data se nepodařilo stáhnout: ${r.errors.join(" | ")}`, "err");
       else zprava(`Hotovo: uloženo ${r.metrics_stored} hodnot (${r.from} až ${r.to}).`, "ok");
       const NAZVY = { dailysummaries: "Denní souhrny", usersummary_daily: "Denní souhrny (po dnech)", sleep: "Spánek", hrv: "HRV" };
@@ -1380,7 +1389,7 @@
         (Object.keys(v.metrics).length ? ` (${Object.entries(v.metrics).map(([m, n]) => `${m} ${n}×`).join(", ")})` : "")).join("\n");
       await nacti();
     } catch (e) {
-      if (e.status === 401) { zprava(""); bannerPrihlaseni(); nutnePrihlaseni(e.message); } else zprava(e.message === "Chyba 503" ? "Chybí GARMIN_API_KEY v nastavení služby." : e.message, "err");
+      if (e.status === 401) { zprava(""); bannerPrihlaseni(); nutnePrihlaseni(e.message); } else zprava(e.message, "err");
     } finally { tl.disabled = false; }
   };
 

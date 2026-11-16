@@ -28,6 +28,7 @@ Dokumentace API (Swagger): <http://127.0.0.1:8000/docs>
 | GET | `/metrics/catalog` | přehled všech uložených metrik (dny, rozsah, poslední hodnota) |
 | GET | `/garmin/activities`, `/garmin/activities/{id}` | aktivity z hodinek a všechna jejich pole |
 | GET/PUT | `/prefs`, `/prefs/{klíč}` | nastavení rozhraní (připnuté metriky) |
+| POST | `/garmin/sync?person_id=` | Garmin lze stahovat za každou osobu s vlastním klíčem (`GARMIN_API_KEY_<id>`) |
 | GET | `/garmin/status` | stav automatické synchronizace (poslední běhy) |
 | GET | `/metrics?metric=&from=&to=` | denní metriky (kroky, klidový tep, spánek…) |
 | POST/GET | `/labs` | krevní rozbory (ruční zadání, výpis) |

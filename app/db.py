@@ -4,6 +4,7 @@ from pathlib import Path
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS garmin_raw (
     id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
     received_at TEXT NOT NULL DEFAULT (datetime('now')),
     summary_type TEXT NOT NULL,
     payload TEXT NOT NULL
@@ -11,17 +12,19 @@ CREATE TABLE IF NOT EXISTS garmin_raw (
 
 -- Denní metriky ze všech zdrojů (Garmin, později i další)
 CREATE TABLE IF NOT EXISTS metric_daily (
+    person_id INTEGER NOT NULL DEFAULT 1,
     source TEXT NOT NULL,
     metric TEXT NOT NULL,
     day TEXT NOT NULL,          -- YYYY-MM-DD
     value REAL NOT NULL,
     unit TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (source, metric, day)
+    PRIMARY KEY (person_id, source, metric, day)
 );
 
 -- Aktivity z hodinek (běh, jízda na kole, posilování…); raw = všechna pole aktivity bez GPS polohy
 CREATE TABLE IF NOT EXISTS activity (
     activity_id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
     day TEXT NOT NULL,
     start_local TEXT NOT NULL,
     type_key TEXT NOT NULL DEFAULT '',
@@ -47,6 +50,7 @@ CREATE TABLE IF NOT EXISTS meta (
 -- Historie synchronizací Garminu (automatických i ručních)
 CREATE TABLE IF NOT EXISTS sync_run (
     id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
     started_at TEXT NOT NULL,      -- ISO, UTC
     finished_at TEXT NOT NULL,
     source TEXT NOT NULL,          -- auto | manual
@@ -112,9 +116,21 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 SELECT id, taken_on, lab, analyte, value, unit, ref_low, ref_high, note FROM lab_result_old;
             DROP TABLE lab_result_old;
         """)
-    for table in ("lab_result", "health_event"):               # starší databáze nemají osobu: vše patří vlastníkovi (osoba 1)
+    for table in ("lab_result", "health_event", "garmin_raw", "activity", "sync_run"):   # starší databáze nemají osobu: vše patří vlastníkovi (osoba 1)
         if "person_id" not in {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN person_id INTEGER NOT NULL DEFAULT 1")
+    if "person_id" not in {r["name"] for r in conn.execute("PRAGMA table_info(metric_daily)")}:   # osoba je součástí klíče: přestavět s kopií dat
+        conn.executescript("""
+            CREATE TABLE metric_daily_new (
+                person_id INTEGER NOT NULL DEFAULT 1, source TEXT NOT NULL, metric TEXT NOT NULL, day TEXT NOT NULL,
+                value REAL NOT NULL, unit TEXT NOT NULL DEFAULT '', PRIMARY KEY (person_id, source, metric, day));
+            INSERT INTO metric_daily_new (person_id, source, metric, day, value, unit)
+                SELECT 1, source, metric, day, value, unit FROM metric_daily;
+            DROP TABLE metric_daily;
+            ALTER TABLE metric_daily_new RENAME TO metric_daily;
+        """)
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_activity_person_day ON activity (person_id, day)")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_sync_person ON sync_run (person_id, source, ok)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_lab_person ON lab_result (person_id, analyte, taken_on)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_event_person ON health_event (person_id, day)")
     conn.commit()

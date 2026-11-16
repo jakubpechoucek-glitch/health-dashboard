@@ -96,7 +96,7 @@ def make_garmin(calls, token_status=200, data_status=200, v2_status=200):
 
 @pytest.fixture
 def garmin_calls():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     calls = []
     app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
         transport=httpx.MockTransport(make_garmin(calls)))
@@ -131,7 +131,7 @@ def test_sync_is_idempotent(client, garmin_calls):
 
 
 def test_sync_reports_errors_without_leaking_key(client):
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
         transport=httpx.MockTransport(make_garmin([], token_status=403)))
     r = client.post("/garmin/sync").json()
@@ -147,7 +147,7 @@ def test_sync_without_api_key_is_503(client):
 
 def test_sync_falls_back_to_per_day_when_v2_returns_500(client):
     """Skutečný případ: v2/dailysummaries vrací 500, kroky a tep se dotáhnou po dnech."""
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     calls = []
     app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
         transport=httpx.MockTransport(make_garmin(calls, v2_status=500)))
@@ -163,7 +163,7 @@ def test_sync_falls_back_to_per_day_when_v2_returns_500(client):
 
 def test_fallback_budget_is_capped(client, monkeypatch):
     monkeypatch.setattr(garmin, "FALLBACK_DAYS", 2)
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(
         transport=httpx.MockTransport(make_garmin([], v2_status=500)))
     r = client.post("/garmin/sync", params={"days": 10}).json()
@@ -567,7 +567,7 @@ def test_is_due_rules():
 
 
 def test_auto_sync_runs_when_due_records_it_and_waits_for_next_interval():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     db, calls = connect(":memory:"), []
     r = autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls))
     assert r["metrics_stored"] > 0 and r["errors"] == []
@@ -582,7 +582,7 @@ def test_auto_sync_runs_when_due_records_it_and_waits_for_next_interval():
 
 
 def test_auto_sync_failure_is_recorded_without_secrets_and_retried_later():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     db = connect(":memory:")
     r = autosync.maybe_run(db, _auto_settings(), http_factory=_factory([], token_status=403))
     assert r["metrics_stored"] == 0
@@ -685,7 +685,7 @@ def make_full(calls, activities=None, weight_status=200, fitness_status=200):
 
 @pytest.fixture
 def full_garmin():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     calls = []
     def use(**kw):
         app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(transport=httpx.MockTransport(make_full(calls, **kw)))
@@ -798,7 +798,7 @@ def test_prefs_roundtrip_and_validation(client):
 
 
 def test_first_run_after_new_sources_happens_immediately_even_if_recent_success():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     db, calls = connect(":memory:"), []
     garmin.record_run(db, garmin.now_iso(), "auto", True, 8, 100, "")                       # před chvílí úspěšný běh starého typu
     assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory(calls)) is not None   # přesto proběhne, kvůli novým zdrojům
@@ -809,7 +809,7 @@ def test_first_run_after_new_sources_happens_immediately_even_if_recent_success(
 
 
 def test_first_run_flag_is_not_set_after_failure_and_retry_waits_30_minutes():
-    garmin._token_cache.update(token=None, exp=0.0)
+    garmin._token_cache.clear()
     db = connect(":memory:")
     assert autosync.maybe_run(db, _auto_settings(), http_factory=_factory([], token_status=403)) is not None
     assert db.execute("SELECT 1 FROM meta WHERE key = ?", (autosync.SOURCES_FLAG,)).fetchone() is None
@@ -817,3 +817,103 @@ def test_first_run_flag_is_not_set_after_failure_and_retry_waits_30_minutes():
     later = datetime.now(timezone.utc) + timedelta(minutes=31)
     assert autosync.maybe_run(db, _auto_settings(), now=later, http_factory=_factory([])) is not None
     assert db.execute("SELECT 1 FROM meta WHERE key = ?", (autosync.SOURCES_FLAG,)).fetchone()
+
+
+# ---------- Garmin pro víc osob: vlastní klíč, data, aktivity a stav ----------
+
+def _two_people_handler(seen):
+    import copy
+    def handler(request: httpx.Request) -> httpx.Response:
+        auth, path = request.headers.get("authorization", ""), request.url.path
+        if path.endswith("/personal-api-key/token"):
+            seen.append(auth)
+            return httpx.Response(200, json={"access_token": "T-" + auth.split()[-1]})
+        lukas = auth.endswith("klic-druheho")
+        if "dailysummaries" in path:
+            d = copy.deepcopy(DAILY_FULL)
+            d["data"][0]["movement"]["steps"]["value"] = 111 if lukas else 9000
+            return httpx.Response(200, json=d)
+        if "activities/search" in path:
+            return httpx.Response(200, json=[_activity(5)] if lukas else [_activity(1)])
+        if "dailySleepSummariesByDate" in path or "/fitnessage-service/" in path:
+            return httpx.Response(200, json=[])
+        if "/hrv-service/" in path:
+            return httpx.Response(200, json={"hrvSummaries": []})
+        if "/weight-service/" in path:
+            return httpx.Response(200, json={"dailyWeightSummaries": []})
+        return httpx.Response(404)
+    return handler
+
+
+def test_each_person_has_own_garmin_key_data_activities_and_status(client, monkeypatch):
+    garmin._token_cache.clear()
+    monkeypatch.setenv("GARMIN_API_KEY_2", "klic-druheho")
+    seen = []
+    app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(transport=httpx.MockTransport(_two_people_handler(seen)))
+    pid = client.post("/persons", json={"name": "Osoba C"}).json()["id"]
+    assert pid == 2
+    for person in (1, 2):
+        r = client.post("/garmin/sync", params={"person_id": person, "days": 3, "end": "2026-11-14"}).json()
+        assert r["errors"] == [], (person, r["errors"])
+    assert sorted(seen) == ["ApiKey klic-druheho", "ApiKey test-klic"]                         # každá osoba se přihlásila svým klíčem, tokeny se nemíchají
+    steps = lambda **q: [m["value"] for m in client.get("/metrics", params={"metric": "steps", **q}).json()]
+    assert steps() == [9000.0] and steps(person_id=1) == [9000.0] and steps(person_id=2) == [111.0]
+    assert [a["activity_id"] for a in client.get("/garmin/activities", params={"person_id": 1}).json()] == [9001]
+    assert [a["activity_id"] for a in client.get("/garmin/activities", params={"person_id": 2}).json()] == [9005]
+    c1 = {c["metric"] for c in client.get("/metrics/catalog").json()}
+    c2 = {c["metric"]: c for c in client.get("/metrics/catalog", params={"person_id": 2}).json()}
+    assert "steps" in c1 and c2["steps"]["last"] == 111 and c2["activity.count"]["days"] == 1
+    s1, s2 = client.get("/garmin/status").json(), client.get("/garmin/status", params={"person_id": 2}).json()
+    assert (s1["key_configured"], s1["key_variable"]) == (True, "GARMIN_API_KEY") and (s2["key_configured"], s2["key_variable"]) == (True, "GARMIN_API_KEY_2")
+    assert s1["last_success"]["ok"] is True and s2["last_success"]["ok"] is True
+    assert client.get("/status").json()["persons"][1]["metric_days"] >= 1
+
+
+def test_person_without_key_gets_clear_message_and_unknown_person_is_404(client):
+    pid = client.post("/persons", json={"name": "Osoba D"}).json()["id"]
+    r = client.post("/garmin/sync", params={"person_id": pid})
+    assert r.status_code == 503 and f"GARMIN_API_KEY_{pid}" in r.json()["detail"]
+    st = client.get("/garmin/status", params={"person_id": pid}).json()
+    assert st["key_configured"] is False and st["key_variable"] == f"GARMIN_API_KEY_{pid}"
+    for url in ("/metrics", "/metrics/catalog", "/garmin/status", "/garmin/activities"):
+        assert client.get(url, params={"person_id": 99}).status_code == 404, url
+    assert client.post("/garmin/sync", params={"person_id": 99}).status_code == 404
+
+
+def test_auto_sync_runs_per_person_with_own_key(monkeypatch):
+    garmin._token_cache.clear()
+    monkeypatch.setenv("GARMIN_API_KEY_2", "klic-druheho")
+    db, seen = connect(":memory:"), []
+    db.execute("INSERT INTO person (name) VALUES ('Osoba C')"); db.commit()
+    factory = lambda: httpx.Client(transport=httpx.MockTransport(_two_people_handler(seen)))
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=factory, person_id=2) is not None
+    assert seen == ["ApiKey klic-druheho"]
+    assert [r["person_id"] for r in db.execute("SELECT person_id FROM sync_run")] == [2]
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=factory, person_id=2) is None          # není na řadě
+    assert autosync.maybe_run(db, _auto_settings(), http_factory=factory, person_id=3) is None          # osoba bez klíče se přeskočí
+    assert db.execute("SELECT COUNT(*) FROM metric_daily WHERE person_id = 1").fetchone()[0] == 0
+
+
+def test_old_garmin_tables_are_migrated_to_the_owner(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE metric_daily (source TEXT NOT NULL, metric TEXT NOT NULL, day TEXT NOT NULL, value REAL NOT NULL,
+                                   unit TEXT NOT NULL DEFAULT '', PRIMARY KEY (source, metric, day));
+        INSERT INTO metric_daily VALUES ('garmin', 'steps', '2026-11-14', 9000, 'count');
+        CREATE TABLE garmin_raw (id INTEGER PRIMARY KEY, received_at TEXT NOT NULL DEFAULT (datetime('now')), summary_type TEXT NOT NULL, payload TEXT NOT NULL);
+        INSERT INTO garmin_raw (summary_type, payload) VALUES ('sleep', '[]');
+        CREATE TABLE sync_run (id INTEGER PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT NOT NULL, source TEXT NOT NULL, ok INTEGER NOT NULL,
+                               days INTEGER NOT NULL, metrics_stored INTEGER NOT NULL, error TEXT NOT NULL DEFAULT '');
+        INSERT INTO sync_run VALUES (1, '2026-11-14T10:00:00+00:00', '2026-11-14T10:00:05+00:00', 'auto', 1, 8, 5, '');
+    """)
+    old.commit(); old.close()
+    db = connect(path)
+    assert [tuple(r) for r in db.execute("SELECT person_id, metric, value FROM metric_daily")] == [(1, "steps", 9000.0)]
+    assert db.execute("SELECT person_id FROM garmin_raw").fetchone()[0] == 1 and db.execute("SELECT person_id FROM sync_run").fetchone()[0] == 1
+    garmin._upsert_metric(db, 2, ("garmin", "steps", "2026-11-14", 111.0, "count"))                    # klíč už zahrnuje osobu
+    garmin._upsert_metric(db, 1, ("garmin", "steps", "2026-11-14", 9500.0, "count"))
+    db.commit()
+    assert {r["person_id"]: r["value"] for r in db.execute("SELECT person_id, value FROM metric_daily")} == {1: 9500.0, 2: 111.0}
+    connect(path).close()                                                                                # druhé otevření nic nerozbije

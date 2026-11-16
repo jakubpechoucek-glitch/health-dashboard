@@ -86,22 +86,23 @@ def activity_columns(it: dict) -> dict | None:
     }
 
 
-def save_activities(db: sqlite3.Connection, items: list[dict]) -> list[tuple]:
+def save_activities(db: sqlite3.Connection, items: list[dict], person_id: int = 1) -> list[tuple]:
     """Uloží aktivity (upsert podle id) a vrátí denní souhrny jako řádky metrik (počet, doba, vzdálenost, VO2max…)."""
     days = set()
     for it in items:
         c = activity_columns(it)
         if not c:
             continue
+        c["person_id"] = person_id
         cols = ", ".join(c)
         db.execute(f"INSERT INTO activity ({cols}) VALUES ({', '.join('?' * len(c))}) "
-                   f"ON CONFLICT(activity_id) DO UPDATE SET " + ", ".join(f"{k}=excluded.{k}" for k in c if k != "activity_id"),
+                   f"ON CONFLICT(activity_id) DO UPDATE SET " + ", ".join(f"{k}=excluded.{k}" for k in c if k not in ("activity_id", "person_id")),
                    tuple(c.values()))
         days.add(c["day"])
     rows = []
     for day in sorted(days):
         r = db.execute("SELECT COUNT(*) n, SUM(duration_s) dur, SUM(distance_m) dist, SUM(calories) kcal, MAX(vo2max) vo2, MAX(aerobic_te) te "
-                       "FROM activity WHERE day = ?", (day,)).fetchone()
+                       "FROM activity WHERE day = ? AND person_id = ?", (day, person_id)).fetchone()
         for metric, unit, v in (("activity.count", "count", r["n"]), ("activity.duration_s", "s", r["dur"]), ("activity.distance_m", "m", r["dist"]),
                                 ("activity.calories", "kcal", r["kcal"]), ("activity.vo2max", "ml/kg/min", r["vo2"]), ("activity.aerobic_te_max", "", r["te"])):
             if isinstance(v, (int, float)):

@@ -98,12 +98,15 @@ def list_events(person_id: int = 1, db: sqlite3.Connection = Depends(get_db)):
 
 @router.get("/metrics")
 def list_metrics(
+    person_id: int = 1,
     metric: list[str] | None = Query(None),
     start: date | None = Query(None, alias="from"),
     end: date | None = Query(None, alias="to"),
     db: sqlite3.Connection = Depends(get_db),
 ):
-    sql, args, where = "SELECT * FROM metric_daily", [], []
+    require_person(db, person_id)
+    sql, args, where = "SELECT source, metric, day, value, unit FROM metric_daily", [], ["person_id = ?"]
+    args.append(person_id)
     if metric:
         where.append("metric IN (%s)" % ",".join("?" * len(metric))); args.extend(metric)
     if start:
@@ -116,15 +119,17 @@ def list_metrics(
 
 
 @router.get("/metrics/catalog")
-def metrics_catalog(db: sqlite3.Connection = Depends(get_db)):
-    """Přehled všech uložených metrik: kolik dní, od kdy do kdy, rozsah hodnot a poslední hodnota."""
+def metrics_catalog(person_id: int = 1, db: sqlite3.Connection = Depends(get_db)):
+    """Přehled všech uložených metrik jedné osoby: kolik dní, od kdy do kdy, rozsah hodnot a poslední hodnota."""
+    require_person(db, person_id)
     last = {r["metric"]: r["value"] for r in db.execute(
-        "SELECT metric, value FROM metric_daily WHERE (metric, day) IN (SELECT metric, MAX(day) FROM metric_daily GROUP BY metric)")}
+        "SELECT metric, value FROM metric_daily WHERE person_id = ? AND (metric, day) IN "
+        "(SELECT metric, MAX(day) FROM metric_daily WHERE person_id = ? GROUP BY metric)", (person_id, person_id))}
     return [
         {"metric": r["metric"], "unit": r["unit"], "days": r["days"], "first_day": r["first_day"], "last_day": r["last_day"],
          "min": r["vmin"], "max": r["vmax"], "last": last.get(r["metric"])}
         for r in db.execute("SELECT metric, MAX(unit) AS unit, COUNT(*) AS days, MIN(day) AS first_day, MAX(day) AS last_day, "
-                            "MIN(value) AS vmin, MAX(value) AS vmax FROM metric_daily GROUP BY metric ORDER BY metric")
+                            "MIN(value) AS vmin, MAX(value) AS vmax FROM metric_daily WHERE person_id = ? GROUP BY metric ORDER BY metric", (person_id,))
     ]
 
 

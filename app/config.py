@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,3 +22,16 @@ class Settings(BaseSettings):
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def garmin_key_var(person_id: int) -> str:
+    """Název proměnné prostředí s osobním API klíčem Garminu dané osoby (osoba 1 = vlastník má GARMIN_API_KEY)."""
+    return "GARMIN_API_KEY" if person_id == 1 else f"GARMIN_API_KEY_{person_id}"
+
+
+def garmin_key(settings: Settings, person_id: int) -> str:
+    return settings.garmin_api_key if person_id == 1 else os.environ.get(garmin_key_var(person_id), "")
+
+
+def any_garmin_key(settings: Settings) -> bool:
+    return bool(settings.garmin_api_key) or any(k.startswith("GARMIN_API_KEY_") and v for k, v in os.environ.items())
