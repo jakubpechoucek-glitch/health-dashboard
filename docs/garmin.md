@@ -23,10 +23,13 @@ Každá osoba má **vlastní účet v Garmin Connect, a tedy vlastní osobní AP
 Hodinky a náramek od Garminu (např. hodinky a Vívosmart) synchronizované do **jednoho** účtu se stahují jedním klíčem, Garmin je v účtu sloučí.
 
 **Jak napojit další osobu (např. Lukáše):**
-1. V aplikaci přidej osobu (**＋ Přidat osobu**). Na záložce Garmin se u ní zobrazí přesný název proměnné, např. `GARMIN_API_KEY_2` (číslo je id osoby).
+1. V aplikaci přidej osobu (**＋ Přidat osobu**) a vyber ji. Na záložce Garmin se u ní zobrazí **přesný název proměnné** (např. `GARMIN_API_KEY_4`). Číslo je id osoby a bývá jiné, než čekáš (osoby vznikají postupně, i při importu dat), proto **vždy použij název z aplikace**, ne ten z příkladů.
 2. Dotyčný si na webu Garmin Connect ve **svém účtu** vytvoří osobní API klíč (Personal API Key; zobrazí se jen jednou).
 3. Klíč vlož v Renderu do **Environment** jako proměnnou s tím názvem. Klíč nikomu neposílej a nepiš do chatu. Služba se restartuje.
 4. Aplikace začne za osobu stahovat sama (automatická synchronizace pro každou osobu s klíčem, nové osobě se stáhne první běh hned). Starší období stáhne **Stáhnout celou historii** (bod pro navázání se pamatuje zvlášť pro každou osobu).
+
+**Kontrola:** po první synchronizaci se u osoby zobrazí **Účet Garminu** (jméno účtu, ke kterému klíč patří). Pokud tam je jiné jméno, než čekáš, klíč je zapsán do nesprávné proměnné.
+**Oprava:** na záložce Garmin je sekce **Data Garminu patří jiné osobě?**, která data bez ztráty přesune k vybrané osobě (`POST /garmin/data/move`). Pak oprav název proměnné v Renderu.
 
 Vlastník aplikace (osoba 1) zůstává na proměnné `GARMIN_API_KEY`. Připnuté metriky má každá osoba své. Garmin Personal API je určené pro vlastní data každého uživatele, proto
 klíč vždy vytváří ten, komu účet patří. Osoby bez klíče vidí na záložce Garmin jen návod.

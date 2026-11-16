@@ -961,3 +961,47 @@ def test_old_garmin_tables_are_migrated_to_the_owner(tmp_path):
     db.commit()
     assert {r["person_id"]: r["value"] for r in db.execute("SELECT person_id, value FROM metric_daily")} == {1: 9500.0, 2: 111.0}
     connect(path).close()                                                                                # druhé otevření nic nerozbije
+
+
+def test_garmin_account_name_is_shown_so_a_key_on_the_wrong_person_is_noticeable(client, monkeypatch):
+    garmin._token_cache.clear()
+    def handler(request):
+        path = request.url.path
+        if path.endswith("/personal-api-key/token"):
+            return httpx.Response(200, json={"access_token": "t"})
+        if "/userprofile-service/" in path:
+            return httpx.Response(200, json={"displayName": "Ucet Testovaci", "timeZone": "Europe/Prague"})
+        if "activities/search" in path:
+            return httpx.Response(200, json=[])
+        return httpx.Response(404)
+    app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(transport=httpx.MockTransport(handler))
+    assert client.get("/garmin/status").json()["account"] == ""
+    client.post("/garmin/sync", params={"days": 3})
+    assert client.get("/garmin/status").json()["account"] == "Ucet Testovaci"
+    app.dependency_overrides.pop(garmin.get_http, None)
+
+
+def test_move_garmin_data_to_the_right_person(client, monkeypatch):
+    """Skutečný případ: klíč byl zapsán k osobě 2, ale patřil osobě 3."""
+    garmin._token_cache.clear()
+    monkeypatch.setenv("GARMIN_API_KEY_2", "klic-druheho")
+    seen = []
+    app.dependency_overrides[garmin.get_http] = lambda: httpx.Client(transport=httpx.MockTransport(_two_people_handler(seen)))
+    wrong = client.post("/persons", json={"name": "Osoba C"}).json()["id"]
+    right = client.post("/persons", json={"name": "Osoba E"}).json()["id"]
+    client.post("/garmin/sync", params={"person_id": wrong, "days": 3, "end": "2026-11-14"})
+    garmin._upsert_metric(app.state.db, right, ("garmin", "steps", "2026-11-14", 5.0, "count"))            # cílová osoba už má jednu hodnotu stejného dne
+    app.state.db.commit()
+    r = client.post("/garmin/data/move", json={"from_person": wrong, "to_person": right})
+    assert r.status_code == 200 and r.json()["metrics"] > 10 and r.json()["activities"] == 1
+    steps = lambda pid: [m["value"] for m in client.get("/metrics", params={"person_id": pid, "metric": "steps"}).json()]
+    assert steps(wrong) == [] and steps(right) == [111.0]                                                  # přepsáno daty ze zdroje, zdroj je prázdný
+    assert client.get("/metrics/catalog", params={"person_id": wrong}).json() == []
+    assert [a["activity_id"] for a in client.get("/garmin/activities", params={"person_id": right}).json()] == [9005]
+    assert client.get("/garmin/activities", params={"person_id": wrong}).json() == []
+    assert client.get("/garmin/status", params={"person_id": right}).json()["last_success"]["ok"] is True   # i historie běhů se přesunula
+    assert client.get("/garmin/status", params={"person_id": wrong}).json()["last_success"] is None
+    assert client.post("/garmin/data/move", json={"from_person": right, "to_person": right}).status_code == 400
+    assert client.post("/garmin/data/move", json={"from_person": 99, "to_person": right}).status_code == 404
+    assert TestClient(app).post("/garmin/data/move", json={"from_person": 1, "to_person": 2}).status_code == 401
+    app.dependency_overrides.pop(garmin.get_http, None)

@@ -21,6 +21,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 
 from .config import Settings, garmin_key, garmin_key_var, get_settings
 from .records import require_person
@@ -293,6 +294,14 @@ def sync(db: sqlite3.Connection, client: GarminClient, start: date, end: date, p
         account("fitness", 1 if fitness else 0, fitness)
     except (GarminError, httpx.HTTPError, ValueError) as e:
         info_for("fitness")["skipped"] = str(e)[:200]
+    try:                                                                                          # kterému účtu Garminu klíč patří (zobrazí se v UI)
+        prof = client.get("/userprofile-service/userprofile/settings")
+        name = prof.get("displayName") if isinstance(prof, dict) else None
+        if isinstance(name, str) and name.strip():
+            db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (f"garmin_account_{person_id}", name.strip()[:80]))
+            db.commit()
+    except (GarminError, httpx.HTTPError, ValueError):
+        pass
     return {"from": start.isoformat(), "to": end.isoformat(), "metrics_stored": stored,
             "by_type": by_type, "errors": errors}
 
@@ -431,6 +440,7 @@ def garmin_status(person_id: int = 1, db: sqlite3.Connection = Depends(get_db), 
     return {
         "key_configured": bool(garmin_key(settings, person_id)),
         "key_variable": garmin_key_var(person_id),
+        "account": (lambda r: r["value"] if r else "")(db.execute("SELECT value FROM meta WHERE key = ?", (f"garmin_account_{person_id}",)).fetchone()),
         "auto": {"enabled": settings.auto_sync_hours > 0, "interval_hours": settings.auto_sync_hours, "days": settings.auto_sync_days},
         "last_auto": _run_json(db, "source = 'auto'", person_id),
         "last_success": _run_json(db, "ok = 1", person_id),
@@ -465,3 +475,36 @@ def activity_detail(activity_id: int, db: sqlite3.Connection = Depends(get_db)):
     if r is None:
         raise HTTPException(status_code=404, detail="Aktivita neexistuje")
     return {"activity_id": r["activity_id"], "raw": json.loads(r["raw"])}
+
+
+class MoveIn(BaseModel):
+    from_person: int
+    to_person: int
+
+
+@router.post("/data/move")
+def move_data(item: MoveIn, db: sqlite3.Connection = Depends(get_db)):
+    """Přesune všechna data Garminu (metriky, aktivity, surová data a historii běhů) od jedné osoby k jiné.
+    Slouží k opravě, když byl klíč zapsán k nesprávné osobě. U stejných dnů se hodnoty cílové osoby přepíšou."""
+    require_person(db, item.from_person)
+    require_person(db, item.to_person)
+    if item.from_person == item.to_person:
+        raise HTTPException(status_code=400, detail="Zdrojová a cílová osoba jsou stejné")
+    if not SYNC_LOCK.acquire(timeout=LOCK_TIMEOUT):
+        raise HTTPException(status_code=409, detail="Právě běží synchronizace, zkus to za chvíli")
+    try:
+        f, t = item.from_person, item.to_person
+        metrics = db.execute("INSERT OR REPLACE INTO metric_daily (person_id, source, metric, day, value, unit) "
+                             "SELECT ?, source, metric, day, value, unit FROM metric_daily WHERE person_id = ?", (t, f)).rowcount
+        db.execute("DELETE FROM metric_daily WHERE person_id = ?", (f,))
+        activities = db.execute("UPDATE activity SET person_id = ? WHERE person_id = ?", (t, f)).rowcount
+        db.execute("UPDATE garmin_raw SET person_id = ? WHERE person_id = ?", (t, f))
+        db.execute("UPDATE sync_run SET person_id = ? WHERE person_id = ?", (t, f))
+        acc = db.execute("SELECT value FROM meta WHERE key = ?", (f"garmin_account_{f}",)).fetchone()
+        if acc:
+            db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (f"garmin_account_{t}", acc["value"]))
+            db.execute("DELETE FROM meta WHERE key = ?", (f"garmin_account_{f}",))
+        db.commit()
+        return {"metrics": metrics, "activities": activities}
+    finally:
+        SYNC_LOCK.release()

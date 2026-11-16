@@ -186,6 +186,8 @@
   .akt-detail { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:2px 20px; font-size:.84rem; }
   .akt-detail div { display:flex; justify-content:space-between; gap:10px; border-bottom:1px dotted var(--line); padding:2px 0; }
   .akt-detail span:first-child { color:var(--text-secondary); }
+  .oprava { margin-top:22px; border:1px dashed var(--line); border-radius:12px; padding:8px 14px; }
+  .oprava summary { cursor:pointer; color:var(--text-secondary); }
   .legenda { color:var(--text-secondary); font-size:.85rem; margin:0 0 10px; }
   .osa-radek { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; }
   .osa-radek .poznamka { display:block; color:var(--text-secondary); font-size:.88rem; margin-top:2px; white-space:pre-wrap; }
@@ -226,7 +228,7 @@
   </div>
 
   <div role="tabpanel" id="panel-garmin" aria-labelledby="tab-garmin" tabindex="0">
-    <p class="msg" id="garmin-nepatri" hidden>Garmin je napojený jen na vlastníka aplikace. U vybrané osoby tu žádná data nejsou.</p>
+    <p class="msg" id="garmin-nepatri" hidden></p>
   <div class="bar" id="ovladani" hidden>
     <button class="primary" id="sync">⟳ Synchronizovat Garmin</button>
     <label>za posledních
@@ -282,6 +284,16 @@
       </div>
       <div id="katalog"></div>
     </section>
+
+    <details id="oprava-sekce" class="oprava" hidden>
+      <summary>Data Garminu patří jiné osobě?</summary>
+      <p class="msg">Stalo se, že byl API klíč zapsán do proměnné jiné osoby, a data se tak uložila nesprávně. Tady je přesuneš. Nic se nemaže: všechna data Garminu této osoby (metriky, aktivity, historie synchronizací) přejdou k vybrané osobě, u stejných dnů se hodnoty cílové osoby přepíšou.</p>
+      <div class="bar">
+        <label>Přesunout data osoby <strong id="oprava-od"></strong> k osobě <select id="oprava-cil" aria-label="Cílová osoba"></select></label>
+        <button type="button" id="oprava-presun">Přesunout</button>
+        <span class="msg" id="oprava-stav" role="status"></span>
+      </div>
+    </details>
   </section>
 
   </div>
@@ -688,7 +700,7 @@
     if (!tb.rows.length) { const tr = tb.insertRow(); const td = tr.insertCell(); td.colSpan = GRAFY.length + 1; td.textContent = "Zatím žádná data. Klikni na Synchronizovat Garmin."; }
   }
 
-  function vykresliVse() { if (!maGarmin()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); vykresliKatalog(); vykresliAktivity(); }
+  function vykresliVse() { if (!maGarmin()) { $("garmin").hidden = true; return; } $("garmin").hidden = false; $("legenda").hidden = !stav.osa.length; vykresliGrafy(); vykresliTabulku(); vykresliKatalog(); vykresliAktivity(); vykresliOpravu(); }
 
   const DRUHY = { exam: "Vyšetření", genetics: "Genetika", medication: "Léky", other: "Jiné" };
   function vykresliOsu(data) {
@@ -1360,6 +1372,27 @@
     finally { tl.disabled = false; }
   });
 
+
+  // ---------- oprava: data Garminu u nesprávné osoby ----------
+  function vykresliOpravu() {
+    const sekce = $("oprava-sekce"), ostatni = stav.osoby.filter((o) => o.id !== stav.osoba);
+    sekce.hidden = !maGarmin() || !ostatni.length; if (sekce.hidden) return;
+    $("oprava-od").textContent = osobaJmeno();
+    const sel = $("oprava-cil"); sel.replaceChildren();
+    for (const o of ostatni) { const op = document.createElement("option"); op.value = o.id; op.textContent = o.name; sel.append(op); }
+  }
+  $("oprava-presun").addEventListener("click", async () => {
+    const cil = +$("oprava-cil").value, kam = (stav.osoby.find((o) => o.id === cil) || {}).name;
+    if (!cil || !confirm(`Přesunout všechna data Garminu osoby ${osobaJmeno()} k osobě ${kam}? Stejné dny u osoby ${kam} se přepíšou.`)) return;
+    const tl = $("oprava-presun"), z = $("oprava-stav"); tl.disabled = true; z.textContent = "Přesouvám…"; z.className = "msg";
+    try {
+      const r = await api("/garmin/data/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ from_person: stav.osoba, to_person: cil }) });
+      z.textContent = `Přesunuto: ${r.metrics} hodnot a ${r.activities} aktivit k osobě ${kam}.`; z.className = "msg ok";
+      await nacti();
+    } catch (e) { z.textContent = "Přesun se nepodařil: " + e.message; z.className = "msg err"; if (e.status === 401) bannerPrihlaseni(); }
+    finally { tl.disabled = false; }
+  });
+
   // ---------- stav automatické synchronizace Garminu ----------
   const pred = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return "právě teď"; if (m < 60) return `před ${m} min`;
     const h = Math.round(m / 60); return h < 24 ? `před ${h} h` : `před ${Math.round(h / 24)} d`; };
@@ -1371,10 +1404,11 @@
       $("garmin-nepatri").textContent = text; $("garmin-nepatri").hidden = maGarmin(); e.hidden = true; return;
     }
     $("garmin-nepatri").hidden = true;
-    if (!st.auto.enabled) text = "Automatická synchronizace je vypnutá (AUTO_SYNC_HOURS=0).";
+    const ucet = `Účet Garminu: ${st.account || "zatím neznámý"} (klíč je v proměnné ${promenna}). `;
+    if (!st.auto.enabled) text = ucet + "Automatická synchronizace je vypnutá (AUTO_SYNC_HOURS=0).";
     else {
       const ok = st.last_success;
-      text = `Automatická synchronizace: každých ${st.auto.interval_hours} h, pokaždé znovu stáhne posledních ${st.auto.days + 1} dní. ` +
+      text = ucet + `Automatická synchronizace: každých ${st.auto.interval_hours} h, pokaždé znovu stáhne posledních ${st.auto.days + 1} dní. ` +
         (ok ? `Poslední úspěšná ${pred(ok.finished_at)}${ok.source === "manual" ? " (ruční)" : ""}, ${ok.metrics_stored} hodnot.` : "Zatím žádná neproběhla. Pro starší období spusť Stáhnout celou historii.");
       const a = st.last_auto;
       if (a && !a.ok && (!ok || new Date(a.finished_at) > new Date(ok.finished_at))) {
