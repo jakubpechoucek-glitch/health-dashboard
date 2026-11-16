@@ -356,9 +356,11 @@ def _seed_payload():
 def test_seed_imports_once_and_is_idempotent():
     db = connect(":memory:")
     first = seed.apply_seed(db, _seed_payload())
-    assert first == {"labs_inserted": 2, "labs_skipped": 0, "events_inserted": 1, "events_skipped": 0}
+    assert first == {"labs_inserted": 2, "labs_skipped": 0, "events_inserted": 1, "events_skipped": 0,
+                     "genetics_inserted": 0, "genetics_updated": 0}
     again = seed.apply_seed(db, _seed_payload())                         # restart služby s ponechanou proměnnou
-    assert again == {"labs_inserted": 0, "labs_skipped": 2, "events_inserted": 0, "events_skipped": 1}
+    assert again == {"labs_inserted": 0, "labs_skipped": 2, "events_inserted": 0, "events_skipped": 1,
+                     "genetics_inserted": 0, "genetics_updated": 0}
     assert db.execute("SELECT COUNT(*) FROM lab_result").fetchone()[0] == 2
 
 
@@ -443,6 +445,40 @@ def test_seed_creates_people_and_assigns_items_by_name():
     assert seed.apply_seed(db, packed)["labs_inserted"] == 0                                # idempotentní i s osobami
     bad = base64.b64encode(_json.dumps({"labs": [{"person": "Nikdo", "taken_on": "2026-01-01", "analyte": "X", "value": 1}]}).encode()).decode()
     assert "error" in seed.apply_seed(connect(":memory:"), bad)
+
+
+# ---------- genetika (texty jsou VYMYŠLENÉ) ----------
+
+GEN = {"report_date": "2025-09-01", "lab": "Laboratoř X", "section": "Kardiogenetika", "grp": "Hypertenze", "title": "Vazodilatace",
+       "genes": "NOS3", "level": "mirne", "description": "Popis.", "result": "Nalezena varianta.", "recommendation": "• pohyb\n• méně soli"}
+
+
+def test_genetics_bulk_lists_per_person_and_updates_same_item(client):
+    pid = client.post("/persons", json={"name": "Osoba G"}).json()["id"]
+    r = client.post("/genetics/bulk", json={"items": [GEN | {"person_id": pid},
+                                                      GEN | {"person_id": pid, "kind": "uvod", "title": "Hypertenze", "level": "", "result": ""}]})
+    assert r.status_code == 201 and r.json() == {"inserted": 2, "updated": 0}
+    assert client.get("/genetics").json() == []                                       # vlastník nic nemá
+    items = client.get("/genetics", params={"person_id": pid}).json()
+    assert [(i["kind"], i["title"], i["level"]) for i in items] == [("vysetreni", "Vazodilatace", "mirne"), ("uvod", "Hypertenze", "")]
+    r = client.post("/genetics/bulk", json={"items": [GEN | {"person_id": pid, "result": "Opravený text."}]})
+    assert r.json() == {"inserted": 0, "updated": 1}                                  # stejné vyšetření se přepíše, nezdvojí
+    assert [i["result"] for i in client.get("/genetics", params={"person_id": pid}).json() if i["kind"] == "vysetreni"] == ["Opravený text."]
+
+
+def test_genetics_rejects_unknown_level_and_person(client):
+    assert client.post("/genetics/bulk", json={"items": [GEN | {"level": "hrozne"}]}).status_code == 422
+    assert client.post("/genetics/bulk", json={"items": [GEN | {"person_id": 99}]}).status_code == 404
+    assert client.get("/genetics", params={"person_id": 99}).status_code == 404
+
+
+def test_seed_imports_genetics_by_person_name():
+    db = connect(":memory:")
+    data = {"persons": [{"name": "Osoba G"}], "genetics": [GEN | {"person": "Osoba G"}]}
+    packed = base64.b64encode(_json.dumps(data).encode()).decode()
+    assert seed.apply_seed(db, packed)["genetics_inserted"] == 1
+    assert seed.apply_seed(db, packed)["genetics_updated"] == 1
+    assert [(r["person_id"], r["genes"]) for r in db.execute("SELECT * FROM genetic_item")] == [(2, "NOS3")]
 
 
 # ---------- další rozložení listů a sjednocení názvů (texty jsou VYMYŠLENÉ) ----------

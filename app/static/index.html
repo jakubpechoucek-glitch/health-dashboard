@@ -11,7 +11,7 @@
     --bg:#f4f2ee; --text:#0b0b0b; --muted:#52514e; --line:#dedad2; --tile:#ffffff;
     --surface-1:#fcfcfb; --text-secondary:#52514e; --text-muted:#898781;
     --grid:#e1e0d9; --axis:#c3c2b7; --series-1:#2a78d6; --series-1-hover:#5598e7;
-    --err:#b3261e; --ok:#006300;
+    --err:#b3261e; --ok:#006300; --warn:#8a4b00;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
@@ -19,7 +19,7 @@
       --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
       --surface-1:#1a1a19; --text-secondary:#c3c2b7;
       --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
-      --err:#ff8a80; --ok:#0ca30c;
+      --err:#ff8a80; --ok:#0ca30c; --warn:#f0a35c;
     }
   }
   :root[data-theme="dark"] {
@@ -27,7 +27,7 @@
     --bg:#121214; --text:#f0efec; --muted:#c3c2b7; --line:#2b2b30; --tile:#1c1c20;
     --surface-1:#1a1a19; --text-secondary:#c3c2b7;
     --grid:#2c2c2a; --axis:#383835; --series-1:#3987e5; --series-1-hover:#6da7ec;
-    --err:#ff8a80; --ok:#0ca30c;
+    --err:#ff8a80; --ok:#0ca30c; --warn:#f0a35c;
   }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
@@ -119,6 +119,22 @@
   .kpi-cislo { font-size:1.7rem; font-weight:600; line-height:1.2; }
   .kpi-text { font-size:.85rem; color:var(--text-secondary); }
   .kpi-mimo .kpi-cislo { color:var(--err); } .kpi-lepsi .kpi-cislo { color:var(--ok); } .kpi-horsi .kpi-cislo { color:var(--err); }
+  /* genetika */
+  .gen-zprava { color:var(--text-secondary); margin:0 0 10px; }
+  .gen-oblast h3 { font-size:1.05rem; margin:24px 0 6px; }
+  .gen-oblast h4 { font-size:.95rem; margin:16px 0 6px; color:var(--text-secondary); }
+  .gen-karta { background:var(--surface-1); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:8px; }
+  .gen-hlava { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; }
+  .gen-nazev { font-weight:600; }
+  .gen-geny { color:var(--text-secondary); font-size:.85rem; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .gen-uroven { font-size:.82rem; font-weight:600; white-space:nowrap; }
+  .gen-uroven.mirne, .gen-uroven.zvysene { color:var(--warn); } .gen-uroven.bez { color:var(--ok); } .gen-uroven.info { color:var(--series-1); }
+  .gen-vysledek { margin:8px 0 4px; }
+  .gen-karta details, .gen-oblast > details { margin-top:6px; }
+  .gen-karta summary, .gen-oblast > details > summary { cursor:pointer; color:var(--text-secondary); font-size:.9rem; }
+  .gen-text p { margin:6px 0; } .gen-text ul { margin:6px 0; padding-left:20px; }
+  .gen-souhrn .gen-karta > details[open] > summary { color:var(--text); }
+  .kpi-mirne .kpi-cislo { color:var(--warn); } .kpi-bez .kpi-cislo { color:var(--ok); } .kpi-info .kpi-cislo { color:var(--series-1); }
   .legenda .lg { display:inline-block; vertical-align:middle; margin:0 2px; }
   .lg-pas { width:22px; height:10px; border-radius:5px; background:color-mix(in srgb, var(--series-1) 17%, transparent); border:1px solid color-mix(in srgb, var(--series-1) 40%, transparent); }
   .lg-star { width:10px; height:10px; border-radius:50%; border:2px solid var(--series-1); background:var(--surface-1); }
@@ -205,6 +221,7 @@
   <div class="zalozky" role="tablist" aria-label="Sekce stránky">
     <button type="button" role="tab" id="tab-garmin" aria-controls="panel-garmin" aria-selected="true">Garmin</button>
     <button type="button" role="tab" id="tab-rozbory" aria-controls="panel-rozbory" aria-selected="false" tabindex="-1">Krevní rozbory</button>
+    <button type="button" role="tab" id="tab-genetika" aria-controls="panel-genetika" aria-selected="false" tabindex="-1">Genetika</button>
     <button type="button" role="tab" id="tab-data" aria-controls="panel-data" aria-selected="false" tabindex="-1">Události a data</button>
   </div>
 
@@ -299,6 +316,22 @@
         <div class="tablewrap" id="rozbory-wrap" hidden><table id="rozbory-tab"></table></div>
       </div>
       <p class="msg" id="rozbory-prazdna" hidden>Zatím žádné rozbory. Nahraj PDF s výsledkovým listem.</p>
+    </section>
+  </div>
+
+  <div role="tabpanel" id="panel-genetika" aria-labelledby="tab-genetika" tabindex="0" hidden>
+    <section aria-labelledby="gen-nadpis">
+      <h2 id="gen-nadpis">Genetická vyšetření</h2>
+      <p class="msg" id="gen-prazdna" hidden>Pro tuto osobu zatím nejsou uložená žádná genetická vyšetření.</p>
+      <div id="gen-obsah" hidden>
+        <p class="gen-zprava" id="gen-zprava"></p>
+        <div class="kpi" id="gen-kpi" role="group" aria-label="Filtr podle výsledku"></div>
+        <div class="bar"><button type="button" id="gen-rozbalit">Rozbalit vše</button></div>
+        <p class="msg">Přepis výsledků a doporučení ze zprávy laboratoře. Úroveň u každého vyšetření vychází z formulace laboratoře
+          („mírně zvyšuje riziko“, „riziko se nemění“). Genetická predispozice není diagnóza; výklad patří lékaři nebo klinickému genetikovi.</p>
+        <div id="gen-souhrn" class="gen-souhrn"></div>
+        <div id="gen-vysetreni"></div>
+      </div>
     </section>
   </div>
 
@@ -708,7 +741,7 @@
   async function vyberOsobu(id) {
     if (id === stav.osoba) return;
     stav.osoba = id; ulozit("osoba", String(id)); zavriNahled(); $("pdf-stav").textContent = "";
-    stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = [];
+    stav.cmpNovy = null; stav.cmpStary = null; stav.filtrRozbory = "vse"; stav.rozbory = []; stav.datumy = []; stav.genFiltr = "vse"; stav.genetika = [];
     vykresliOsoby();
     if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");
     try { await nacti(); } catch (e) { if (e.status === 401) { bannerPrihlaseni(); nutnePrihlaseni(e.message); } else $("stav").textContent = e.message; }
@@ -1351,11 +1384,11 @@
         stav.katalog = katalog; stav.pripnute = Array.isArray(prefs.pripnute) ? prefs.pripnute : [];
         await nactiAktivity().catch(() => { stav.aktivity = []; });
       }
-      const [osa, metriky, rozbory, nastaveni] = await Promise.all([api("/timeline" + q), jeVlastnik() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({}))]);
+      const [osa, metriky, rozbory, nastaveni, genetika] = await Promise.all([api("/timeline" + q), jeVlastnik() ? nactiMetriky() : Promise.resolve([]), api("/labs" + q), api("/labs/settings").catch(() => ({})), api("/genetics" + q).catch(() => [])]);
       stav.nastaveni = nastaveni;
       stav.metriky = metriky; stav.osa = osa;
       $("stav").textContent = ""; $("ovladani").hidden = !jeVlastnik(); $("hist-radek").hidden = !jeVlastnik(); $("garmin-nepatri").hidden = jeVlastnik();
-      vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory);
+      vykresliVse(); vykresliOsu(osa); vykresliRozbory(rozbory); vykresliGenetiku(genetika);
       if (!jeVlastnik() && $("tab-garmin").getAttribute("aria-selected") === "true") otevriZalozku("rozbory");     // Garmin patří jen vlastníkovi
       api("/status").then(vykresliStav).catch(() => {});
       if (jeVlastnik()) api("/garmin/status").then(vykresliAuto).catch(() => {}); else vykresliAuto({});
@@ -1452,8 +1485,93 @@
   };
 
 
+  // ---------- genetika ----------
+  const UROVNE = { mirne: "⚠ mírně zvýšené riziko", zvysene: "⚠ zvýšené riziko", bez: "✓ bez zvýšeného rizika", info: "ℹ informace pro životosprávu" };
+  const GEN_FILTRY = [["vse", "Všechna vyšetření", ""], ["mirne", "Mírně zvýšené riziko", "kpi-mirne"], ["bez", "Bez zvýšeného rizika", "kpi-bez"], ["info", "Informace", "kpi-info"]];
+  stav.genetika = []; stav.genFiltr = "vse";
+  // Text ze zprávy: odstavce oddělené prázdným řádkem, řádky začínající „• “ jsou odrážky. Vždy přes textContent.
+  function textBlok(text) {
+    const box = document.createElement("div"); box.className = "gen-text";
+    for (const odst of (text || "").split(/\n\s*\n/)) {
+      const radky = odst.split("\n").map((r) => r.trim()).filter(Boolean); if (!radky.length) continue;
+      let ul = null;
+      for (const r of radky) {
+        if (r.startsWith("• ")) { if (!ul) { ul = document.createElement("ul"); box.append(ul); } const li = document.createElement("li"); li.textContent = r.slice(2); ul.append(li); }
+        else { ul = null; const p = document.createElement("p"); p.textContent = r; box.append(p); }
+      }
+    }
+    return box;
+  }
+  function rozbalovaci(nadpis, text, otevreno) {
+    const d = document.createElement("details"); if (otevreno) d.open = true;
+    const s = document.createElement("summary"); s.textContent = nadpis; d.append(s, textBlok(text)); return d;
+  }
+  const genDatum = (d) => new Date(d + "T12:00:00").toLocaleDateString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric" });
+  function vykresliGenetiku(polozky) {
+    if (polozky) stav.genetika = polozky;
+    const vse = stav.genetika, vysetreni = vse.filter((i) => i.kind === "vysetreni");
+    $("gen-prazdna").hidden = vse.length > 0; $("gen-obsah").hidden = !vse.length;
+    if (!vse.length) return;
+    const zpravy = [...new Map(vse.map((i) => [i.lab + i.report_date, i])).values()];
+    $("gen-zprava").textContent = zpravy.map((z) => `${z.lab || "Laboratoř neuvedena"}, ${genDatum(z.report_date)}`).join(" · ") + ` · ${vysetreni.length} vyšetření`;
+    const kpi = $("gen-kpi"); kpi.replaceChildren();
+    for (const [klic, popis, trida] of GEN_FILTRY) {
+      const n = klic === "vse" ? vysetreni.length : vysetreni.filter((i) => i.level === klic || (klic === "mirne" && i.level === "zvysene")).length;
+      const b = document.createElement("button"); b.type = "button"; b.className = "kpi-dlazdice " + trida; b.setAttribute("aria-pressed", String(stav.genFiltr === klic));
+      const c = document.createElement("span"); c.className = "kpi-cislo"; c.textContent = n;
+      const t = document.createElement("span"); t.className = "kpi-text"; t.textContent = popis;
+      b.append(c, t); b.addEventListener("click", () => { stav.genFiltr = klic; vykresliGenetiku(); }); kpi.append(b);
+    }
+    // souhrnná zpráva klinického genetika
+    const souhrn = $("gen-souhrn"); souhrn.replaceChildren();
+    const souhrny = vse.filter((i) => i.kind === "souhrn");
+    if (souhrny.length && stav.genFiltr === "vse") {
+      const h = document.createElement("h3"); h.textContent = souhrny[0].section || "Souhrnná zpráva"; souhrn.append(h);
+      const pozn = document.createElement("p"); pozn.className = "msg"; pozn.textContent = `${souhrny[0].lab}, ${genDatum(souhrny[0].report_date)}`; souhrn.append(pozn);
+      for (const s of souhrny) { const k = document.createElement("div"); k.className = "gen-karta"; k.append(rozbalovaci(s.title, s.result, false)); souhrn.append(k); }
+    }
+    // jednotlivá vyšetření po oblastech a skupinách, úvodní texty oblastí jako rozbalovací „O oblasti“
+    const host = $("gen-vysetreni"); host.replaceChildren();
+    const vybrana = (i) => stav.genFiltr === "vse" || i.level === stav.genFiltr || (stav.genFiltr === "mirne" && i.level === "zvysene");
+    const oblasti = [...new Set(vse.filter((i) => i.kind !== "souhrn").map((i) => i.section))];
+    for (const oblast of oblasti) {
+      const vOblasti = vse.filter((i) => i.kind !== "souhrn" && i.section === oblast);
+      if (!vOblasti.some((i) => i.kind === "vysetreni" && vybrana(i))) continue;
+      const box = document.createElement("div"); box.className = "gen-oblast";
+      const h = document.createElement("h3"); h.textContent = oblast || "Ostatní"; box.append(h);
+      let skupina = null;
+      for (const i of vOblasti) {
+        if (i.kind === "uvod") {
+          if (stav.genFiltr !== "vse") continue;
+          if (i.grp && i.grp !== skupina) { skupina = i.grp; const h4 = document.createElement("h4"); h4.textContent = i.grp; box.append(h4); }
+          box.append(rozbalovaci(i.grp ? "O skupině: " + i.grp : "O oblasti: " + oblast, i.description, false)); continue;
+        }
+        if (!vybrana(i)) continue;
+        if (i.grp !== skupina && i.grp) { skupina = i.grp; const h4 = document.createElement("h4"); h4.textContent = i.grp; box.append(h4); }
+        if (!i.grp) skupina = null;
+        const k = document.createElement("article"); k.className = "gen-karta";
+        const hl = document.createElement("div"); hl.className = "gen-hlava";
+        const nazev = document.createElement("div");
+        const n = document.createElement("span"); n.className = "gen-nazev"; n.textContent = i.title; nazev.append(n);
+        if (i.genes) { const g = document.createElement("div"); g.className = "gen-geny"; g.textContent = "Geny: " + i.genes; nazev.append(g); }
+        hl.append(nazev);
+        if (i.level) { const u = document.createElement("span"); u.className = "gen-uroven " + i.level; u.textContent = UROVNE[i.level] || i.level; hl.append(u); }
+        k.append(hl);
+        const v = textBlok(i.result); v.classList.add("gen-vysledek"); k.append(v);
+        if (i.recommendation) k.append(rozbalovaci("Komentář a doporučení", i.recommendation, false));
+        if (i.description) k.append(rozbalovaci("O vyšetření", i.description, false));
+        box.append(k);
+      }
+      host.append(box);
+    }
+  }
+  $("gen-rozbalit").addEventListener("click", () => {
+    const vse = [...document.querySelectorAll("#panel-genetika details")], otevrit = vse.some((d) => !d.open);
+    vse.forEach((d) => { d.open = otevrit; }); $("gen-rozbalit").textContent = otevrit ? "Sbalit vše" : "Rozbalit vše";
+  });
+
   // ---------- záložky ----------
-  const ZALOZKY = ["garmin", "rozbory", "data"];
+  const ZALOZKY = ["garmin", "rozbory", "genetika", "data"];
   function otevriZalozku(nazev, fokus) {
     if (!ZALOZKY.includes(nazev)) nazev = "garmin";
     for (const z of ZALOZKY) {

@@ -93,6 +93,26 @@ CREATE TABLE IF NOT EXISTS health_event (
     title TEXT NOT NULL,
     note TEXT NOT NULL DEFAULT ''
 );
+
+-- Výsledky genetických vyšetření (přepis závěrů zprávy, ne surová data DNA): jedna položka = jedno vyšetření
+-- nebo úvodní či souhrnný text. Zpráva = osoba + laboratoř + datum.
+CREATE TABLE IF NOT EXISTS genetic_item (
+    id INTEGER PRIMARY KEY,
+    person_id INTEGER NOT NULL DEFAULT 1,
+    report_date TEXT NOT NULL,          -- YYYY-MM-DD
+    lab TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'vysetreni' CHECK (kind IN ('vysetreni', 'uvod', 'souhrn')),
+    section TEXT NOT NULL DEFAULT '',   -- oblast (Kardiogenetika...)
+    grp TEXT NOT NULL DEFAULT '',       -- skupina v oblasti (Hypertenze...)
+    title TEXT NOT NULL,
+    genes TEXT NOT NULL DEFAULT '',     -- vyšetřované geny, čárkou oddělené
+    level TEXT NOT NULL DEFAULT '' CHECK (level IN ('', 'zvysene', 'mirne', 'bez', 'info')),
+    description TEXT NOT NULL DEFAULT '',
+    result TEXT NOT NULL DEFAULT '',
+    recommendation TEXT NOT NULL DEFAULT '',
+    ord INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_genetic ON genetic_item (person_id, report_date, lab, kind, section, grp, title);
 """
 
 
