@@ -322,6 +322,10 @@
   <div role="tabpanel" id="panel-genetika" aria-labelledby="tab-genetika" tabindex="0" hidden>
     <section aria-labelledby="gen-nadpis">
       <h2 id="gen-nadpis">Genetická vyšetření</h2>
+      <div class="bar">
+        <label class="nahrat"><input type="file" id="gen-soubor" accept="application/json,.json"><span>Nahrát výsledky (JSON)</span></label>
+        <span class="msg" id="gen-stav" role="status"></span>
+      </div>
       <p class="msg" id="gen-prazdna" hidden>Pro tuto osobu zatím nejsou uložená žádná genetická vyšetření.</p>
       <div id="gen-obsah" hidden>
         <p class="gen-zprava" id="gen-zprava"></p>
@@ -1565,6 +1569,21 @@
       host.append(box);
     }
   }
+  // Import přepsané zprávy ze souboru JSON ({"genetics": [...]} nebo {"items": [...]}). Ukládá se vždy vybrané osobě.
+  $("gen-soubor").addEventListener("change", async (e) => {
+    const soubor = e.target.files[0]; e.target.value = ""; if (!soubor) return;
+    const st = $("gen-stav"); st.className = "msg"; st.textContent = "";
+    try {
+      if (!stav.osoby.length) await nactiOsoby();                      // osoba musí být známá dřív, než se uloží
+      const data = JSON.parse(await soubor.text());
+      const polozky = (Array.isArray(data) ? data : data.genetics || data.items || []).map(({ person, person_id, ...i }) => ({ ...i, person_id: stav.osoba }));
+      if (!polozky.length) throw new Error("V souboru nejsou žádné položky genetiky.");
+      if (!confirm(`Uložit ${polozky.length} položek genetiky osobě ${osobaJmeno()}? Stejné položky téže zprávy se přepíšou.`)) return;
+      const r = await api("/genetics/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items: polozky }) });
+      st.textContent = `Uloženo: ${r.inserted} nových, ${r.updated} aktualizovaných.`; st.className = "msg ok";
+      vykresliGenetiku(await api("/genetics?person_id=" + stav.osoba));
+    } catch (err) { st.textContent = err instanceof SyntaxError ? "Soubor není platný JSON." : err.message; st.className = "msg err"; }
+  });
   $("gen-rozbalit").addEventListener("click", () => {
     const vse = [...document.querySelectorAll("#panel-genetika details")], otevrit = vse.some((d) => !d.open);
     vse.forEach((d) => { d.open = otevrit; }); $("gen-rozbalit").textContent = otevrit ? "Sbalit vše" : "Rozbalit vše";

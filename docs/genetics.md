@@ -27,4 +27,6 @@ nebo část souhrnné zprávy (`souhrn`). Zpráva je určená osobou, laboratoř
 | GET | `/genetics?person_id=` | všechny položky osoby v pořadí zprávy |
 | POST | `/genetics/bulk` | `{"items": [...]}`, max 500; stejná položka téže zprávy se přepíše novým textem |
 
-Import přes `SEED_JSON_B64`: klíč `genetics` se stejnými poli jako `POST /genetics/bulk`, osobu lze zadat jménem (`person`).
+Import v aplikaci: tlačítko **Nahrát výsledky (JSON)** v záložce Genetika uloží položky ze souboru
+(`{"genetics": [...]}`) vybrané osobě; pole `person` v souboru se ignoruje. Hodí se pro velké zprávy, které se do proměnné
+prostředí nevejdou pohodlně. Import přes `SEED_JSON_B64`: klíč `genetics` se stejnými poli jako `POST /genetics/bulk`, osobu lze zadat jménem (`person`).
