@@ -752,18 +752,26 @@
 
   // Seskupení a interpretace. Každý ukazatel se čte jinak: u cholesterolu je lepší méně, u HDL více, u většiny je cílem rozmezí.
   const SKUPINY = [
+    ["Tělo a krevní tlak", /^(Hmotnost|Výška|BMI|Krevní tlak systolický|Krevní tlak diastolický|Tepová frekvence klidová)$/],
     ["Moč", /\(moč/],
+    ["Stolice", /\(stolice/],
     ["Ledviny", /^(Urea|Kreatinin|GF CKD-EPI|Hodnocení CKD dle eGFR|Kyselina močová)$/],
     ["Elektrolyty", /^(Na - natrium|K - kalium|Cl - chloridy)$/],
     ["Játra a bílkoviny", /^(Bilirubin celk\.|ALT|AST|GGT|ALP|FIB-4 index|Celk\.bílkovina)$/],
-    ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
+    ["Svaly", /^CK$/],
+    ["Tuky (lipidy)", /^(Cholesterol|HDL cholesterol|non-HDL cholesterol|LDL cholesterol|VLDL cholesterol|Triacylglyceroly|Lp\(a\))$/],
     ["Cukr", /^Glukóza$/],
     ["Krevní obraz", /^(WBC|RBC|HB|HCT|MCV|MCHC|MCH|PLT|RDW|MPV|PDW|Normoblasty)\b/],
-    ["Krevní obraz: diferenciál", /^(Neutrofily|Eozinofily|Bazofily|Lymfocyty|Monocyty|Nezralé granulocyty)/],
+    // EUC píše Eosinofily/Basofily, ostatní laboratoře Eozinofily/Bazofily
+    ["Krevní obraz: diferenciál", /^(Neutrofily|Eozinofily|Eosinofily|Bazofily|Basofily|Lymfocyty|Monocyty|Nezralé granulocyty)/],
     ["Prostata", /^PSA$/],
     ["Štítná žláza", /^(TSH|fT4)$/],
     ["Vitamíny a minerály", /^(25-OH vitamin D|Mg - hořčík)$/],
     ["Slinivka a trávení", /^Lipáza$/],
+    ["Infekce a nádorové markery", /^(HBsAg|Anti-HBs|CA 19-9)$/],
+    ["Srdce: EKG, echo a zátěžový test", /^(EKG|Echo|Zátěžový test):/],
+    ["Kosti (denzitometrie)", /^DXA /],
+    ["Složení těla (DXA)", /^Složení těla:/],
   ];
 
   // ---------- vysvětlivky ukazatelů (obecná informace pro orientaci, ne výklad výsledku) ----------
@@ -839,14 +847,73 @@
     "Monocyty": ["Monocyty", "Druh bílých krvinek, které pohlcují mikroby a zbytky buněk.", "infekce, zánět, období zotavování", "obvykle bez významu"],
     "Nezralé granulocyty": ["Nezralé granulocyty", "Nezralé formy bílých krvinek, které se při zvýšené potřebě dostávají do krve dřív.", "výrazný zánět nebo infekce, stres, těhotenství", "obvykle bez významu"],
   };
+  const DIFER_EUC = { Eozinofily: "Eosinofily", Bazofily: "Basofily" };           // EUC Lab píše jména se „s“
   for (const [zaklad, [jmeno, co, vyssi, nizsi]] of Object.entries(DIFER)) {
-    VYSVETLENI[zaklad] = { jmeno: `${jmeno} (podíl z leukocytů)`, co, vyssi, nizsi };
-    for (const nazev of [`${zaklad} abs. počet`, `${zaklad} abs.počet`]) VYSVETLENI[nazev] = { jmeno: `${jmeno} (absolutní počet)`, co, vyssi, nizsi };
+    const zaklady = [zaklad, ...(DIFER_EUC[zaklad] ? [DIFER_EUC[zaklad]] : [])];
+    for (const z of zaklady) {
+      VYSVETLENI[z] = { jmeno: `${jmeno} (podíl z leukocytů)`, co, vyssi, nizsi };
+      for (const nazev of [`${z} abs. počet`, `${z} abs.počet`, `${z} abs.`]) VYSVETLENI[nazev] = { jmeno: `${jmeno} (absolutní počet)`, co, vyssi, nizsi };
+    }
   }
+
+  // Vyšetření mimo krevní rozbory (prohlídky, denzitometrie, kardiologie) a ukazatele dalších laboratoří.
+  Object.assign(VYSVETLENI, {
+    "CK": { jmeno: "CK (kreatinkináza)", co: "Enzym ve svalech, včetně srdečního svalu. Při poškození svalových buněk se uvolňuje do krve.", vyssi: "intenzivní cvičení nebo námaha v předchozích dnech, svalové poranění, injekce do svalu, některé léky (statiny), onemocnění svalů" },
+    "VLDL cholesterol": { jmeno: "VLDL cholesterol", co: "Cholesterol v částicích, které z jater rozvážejí hlavně triacylglyceroly. Obvykle se nepočítá přímo, ale odhaduje z triacylglycerolů.", vyssi: "vysoké triacylglyceroly, nadbytek cukrů a alkoholu, nadváha" },
+    "HBsAg": { jmeno: "HBsAg (povrchový antigen viru hepatitidy B)", co: "Bílkovina z obalu viru hepatitidy B. Nereaktivní (nízký) výsledek znamená, že v krvi není známka probíhající infekce.", vyssi: "reaktivní výsledek: probíhající nebo chronická infekce hepatitidou B (potvrzuje lékař)" },
+    "Anti-HBs": { jmeno: "Anti-HBs (protilátky proti hepatitidě B)", co: "Protilátky po očkování nebo prodělané hepatitidě B. Hodnota 10 IU/l a víc znamená ochranu.", nizsi: "pod 10 IU/l: chybí ochrana proti hepatitidě B (nebyla očkována nebo protilátky po letech poklesly); lékař může doporučit očkování nebo posilující dávku" },
+    "CA 19-9": { jmeno: "CA 19-9 (nádorový marker)", co: "Bílkovina, která se sleduje hlavně u nádorů slinivky a trávicího ústrojí. Jako samostatný screening není spolehlivá, normální hodnota nádor nevylučuje.", vyssi: "záněty slinivky a žlučových cest, ucpání žlučovodu, některé nádory" },
+    "FIT – okultní krvácení (stolice)": { jmeno: "FIT (imunochemický test na skryté krvácení ve stolici)", co: "Hledá lidský hemoglobin ve stolici. Slouží ke screeningu rakoviny tlustého střeva a konečníku. Negativní výsledek je v pořádku.", vyssi: "pozitivní: krvácení v trávicím traktu (polypy, hemoroidy, záněty, nádor); obvykle následuje kolonoskopie" },
+    "Barva (moč)": { jmeno: "Barva moči", co: "Obvykle žlutá. Tmavší moč bývá koncentrovanější, často při menším pití." },
+    "Zákal (moč)": { jmeno: "Zákal moči", co: "Normální moč je čirá. Zákal mohou způsobit buňky, bakterie, hlen nebo krystaly, ale i odběr či stání vzorku." },
+    "Kulovité epitelie (moč, sediment)": { jmeno: "Kulovité (renální a přechodné) epitelie v sedimentu", co: "Buňky z hlubších částí močových cest. V malém množství jsou běžné.", vyssi: "zánět nebo podráždění močových cest" },
+    "Krystaly oxalátu vápenatého (moč, sediment)": { jmeno: "Krystaly šťavelanu (oxalátu) vápenatého", co: "Krystaly, které se tvoří v koncentrované moči a po jídle bohatém na šťavelany (špenát, rebarbora, ořechy, čaj). Ojedinělý nález obvykle nemá význam.", vyssi: "opakovaný hojný nález: sklon k ledvinovým kamenům, málo tekutin" },
+    "Barva (stolice)": { jmeno: "Barva stolice", co: "Obvykle hnědá, ovlivňuje ji strava a žluč." },
+    "Konzistence (stolice)": { jmeno: "Konzistence stolice", co: "Formovaná nebo měkká stolice je normální." },
+    "Leukocyty (stolice)": { jmeno: "Leukocyty (hnisavé buňky) ve stolici", co: "Bílé krvinky ve stolici pod mikroskopem; 0–1 v zorném poli je normální.", vyssi: "zánět střeva nebo bakteriální průjem" },
+    "Erytrocyty (stolice)": { jmeno: "Erytrocyty ve stolici", co: "Červené krvinky ve stolici pod mikroskopem.", vyssi: "krvácení v dolní části trávicího traktu (např. hemoroidy, zánět)" },
+    "Vajíčka parazitů (stolice)": { jmeno: "Vajíčka a cysty parazitů ve stolici", co: "Mikroskopické hledání střevních parazitů. „Nenalezena“ je normální nález." },
+    "Hmotnost": { jmeno: "Tělesná hmotnost", co: "Hmotnost naměřená při vyšetření (může se mírně lišit podle váhy, oblečení a denní doby)." },
+    "Výška": { jmeno: "Tělesná výška", co: "Výška naměřená při vyšetření." },
+    "BMI": { jmeno: "BMI (index tělesné hmotnosti)", co: "Hmotnost v kg dělená druhou mocninou výšky v metrech. Pásmo 18,5 až 24,9 je normální hmotnost. Nerozlišuje svaly a tuk.", vyssi: "nadváha (25–29,9) nebo obezita (30 a víc)", nizsi: "podváha (pod 18,5)" },
+    "Krevní tlak systolický": { jmeno: "Krevní tlak systolický (horní)", co: "Tlak v tepnách při stahu srdce. Optimální je pod 120 mmHg, vysoký od 140 mmHg (při opakovaném měření).", vyssi: "hypertenze, stres, bolest, káva, měření hned po námaze", nizsi: "nízký tlak; u zdravých štíhlých lidí často bez obtíží" },
+    "Krevní tlak diastolický": { jmeno: "Krevní tlak diastolický (dolní)", co: "Tlak v tepnách mezi stahy srdce. Optimální je pod 80 mmHg, vysoký od 90 mmHg.", vyssi: "hypertenze", nizsi: "nízký tlak" },
+    "Tepová frekvence klidová": { jmeno: "Klidová tepová frekvence", co: "Počet úderů srdce za minutu v klidu. U dospělých zhruba 50 až 100, u trénovaných lidí bývá nižší.", vyssi: "stres, nervozita při vyšetření, káva, horečka, nedostatek tekutin, nižší kondice", nizsi: "dobrá vytrvalostní kondice; u netrénovaných lidí případně porucha převodu (posoudí lékař)" },
+    "Zátěžový test: výkon": { jmeno: "Zátěžový test: dosažený výkon (MET)", co: "Maximální zátěž na běhacím pásu podle Bruceova protokolu v násobcích klidového metabolismu (MET). Čím víc, tím lepší kondice; nad 10 MET je dobrá kapacita." },
+    "Zátěžový test: % cílové tepové frekvence": { jmeno: "Zátěžový test: dosažená tepová frekvence", co: "Kolik procent cílové (věkem odhadnuté maximální) tepové frekvence se dosáhlo. Za dostatečnou zátěž se obvykle považuje 85 % a víc." },
+    "Zátěžový test: délka": { jmeno: "Zátěžový test: délka zátěže", co: "Jak dlouho test na běhacím pásu trval. Delší čas znamená lepší výkon." },
+    "Zátěžový test: max. tepová frekvence": { jmeno: "Zátěžový test: nejvyšší tepová frekvence", co: "Nejvyšší tepová frekvence dosažená na konci zátěže." },
+    "EKG: PQ interval": { jmeno: "PQ interval na EKG", co: "Doba převodu vzruchu ze síní na komory. Normálně 120 až 200 ms.", vyssi: "zpomalené vedení (AV blokáda 1. stupně), některé léky", nizsi: "zkrácené vedení (posoudí lékař)" },
+    "EKG: QRS": { jmeno: "Šíře komplexu QRS na EKG", co: "Doba šíření vzruchu komorami. Normálně do 100 až 120 ms.", vyssi: "blokáda Tawarova raménka nebo jiná porucha vedení" },
+    "EKG: QTc": { jmeno: "QTc (korigovaný interval QT)", co: "Doba elektrického zotavení komor přepočtená na tepovou frekvenci. U žen je normální zhruba do 460 ms.", vyssi: "prodloužený QT: riziko poruch rytmu; přispívají některé léky, nízký draslík nebo hořčík, vrozené dispozice" },
+    "Echo: ejekční frakce LK": { jmeno: "Ejekční frakce levé komory (EF)", co: "Kolik procent krve levá komora vypudí při stahu. Normální je zhruba 55 % a víc.", nizsi: "snížená čerpací funkce srdce" },
+    "Echo: LAVI (objem levé síně)": { jmeno: "LAVI (objem levé síně na plochu těla)", co: "Velikost levé síně. Normálně do 34 ml/m².", vyssi: "zvětšená levá síň (např. dlouhodobě vysoký tlak, chlopenní vada); u sportovců může být mírně větší" },
+    "Echo: TAPSE": { jmeno: "TAPSE (pohyb trojcípé chlopně)", co: "Ukazatel funkce pravé komory. Normálně 17 mm a víc.", nizsi: "snížená funkce pravé komory" },
+  });
+  const DXA_TSKORE = { co: "Porovnání hustoty kosti s mladými zdravými dospělými ve směrodatných odchylkách (SD). Podle WHO: −1,0 a výš je normální, mezi −1,0 a −2,5 osteopénie, −2,5 a níž osteoporóza.", nizsi: "úbytek kostní hmoty a vyšší riziko zlomenin; podílí se pokles estrogenů v menopauze, nedostatek vitaminu D, vápníku a pohybu, dědičnost" };
+  const DXA_BMD = { co: "Plošná hustota kostního minerálu (g/cm²) naměřená denzitometrem. Porovnávat v čase jde jen na stejném přístroji; pro hodnocení slouží T-skóre.", nizsi: "úbytek kostní hmoty" };
+  const SLOZENI = {
+    "tuk": ["Podíl tělesného tuku", "Kolik procent hmotnosti tvoří tuk. U žen kolem 50 let bývá běžně zhruba 25 až 38 %."],
+    "tuková hmota": ["Tuková hmota", "Hmotnost veškerého tuku v těle."],
+    "svalová (netuková) hmota": ["Netuková (svalová) hmota", "Svaly, orgány a tekutiny bez tuku a kostí. Udržení svalů s věkem chrání před pády a zlomeninami."],
+    "podíl svalové tkáně": ["Podíl netukové tkáně", "Kolik procent měkkých tkání tvoří netuková hmota."],
+    "tuk android (břicho)": ["Tuk v oblasti břicha (android)", "Podíl tuku v oblasti pasu. Břišní tuk je spojen s vyšším rizikem srdečních a metabolických nemocí."],
+    "tuk gynoid (boky)": ["Tuk v oblasti boků (gynoid)", "Podíl tuku v oblasti boků a stehen. Z hlediska rizika je příznivější než břišní tuk."],
+    "poměr A/G": ["Poměr tuku android/gynoid", "Poměr břišního tuku k tuku na bocích. U žen je ideální pod 0,8, vyšší hodnota znamená vyšší kardiovaskulární riziko."],
+    "RSMI (svalový index končetin)": ["RSMI (relativní index kosterních svalů)", "Netuková hmota paží a nohou dělená druhou mocninou výšky. U žen pod 5,5 kg/m² ukazuje na nízkou svalovou hmotu (riziko sarkopenie)."],
+    "klidový metabolismus (RMR)": ["Klidový metabolismus", "Odhad energie, kterou tělo spotřebuje za den v úplném klidu."],
+  };
+  for (const [k, [jmeno, co]] of Object.entries(SLOZENI)) VYSVETLENI[`Složení těla: ${k}`] = { jmeno, co };
+  for (const misto of ["bederní páteř L1-L3", "bederní páteř L1-L4", "krček femuru vlevo", "krček femuru vpravo", "proximální femur vlevo", "proximální femur vpravo", "celé tělo"]) {
+    VYSVETLENI[`DXA T-skóre ${misto}`] = { jmeno: `T-skóre: ${misto}`, ...DXA_TSKORE };
+    VYSVETLENI[`DXA BMD ${misto}`] = { jmeno: `Hustota kosti (BMD): ${misto}`, ...DXA_BMD };
+  }
+
   const skupinaPro = (a) => (SKUPINY.find(([, re]) => re.test(a)) || ["Ostatní"])[0];
   const MODY = { rozmezi: "v rozmezí je v pořádku", nizsi: "nižší je lepší", vyssi: "vyšší je lepší", nehodnotit: "nehodnotit změnu" };
-  const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index)$/.test(a) ? "nizsi"
-    : /^(HDL cholesterol|GF CKD-EPI)$/.test(a) ? "vyssi" : "rozmezi");
+  const vychoziMod = (a) => (/^(Cholesterol|non-HDL cholesterol|LDL cholesterol|VLDL cholesterol|Triacylglyceroly|Lp\(a\)|PSA|Kyselina močová|FIB-4 index|Složení těla: (tuk|tuková hmota|tuk android \(břicho\)|poměr A\/G))$/.test(a) ? "nizsi"
+    : /^(HDL cholesterol|GF CKD-EPI|Anti-HBs|DXA .*|Složení těla: (svalová \(netuková\) hmota|RSMI \(svalový index končetin\))|Zátěžový test: (výkon|délka))$/.test(a) ? "vyssi"
+    : /^(Hmotnost|Výška|Složení těla: (tuk gynoid \(boky\)|podíl svalové tkáně|klidový metabolismus \(RMR\))|Zátěžový test: .*|EKG: .*|Echo: .*)$/.test(a) ? "nehodnotit" : "rozmezi");
   const modPro = (a) => stav.nastaveni[a] || vychoziMod(a);
 
   const zona = (v, lo, hi) => (lo != null && v < lo ? -1 : hi != null && v > hi ? 1 : 0);          // -1 pod, 0 v rozmezí, 1 nad

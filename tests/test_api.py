@@ -494,6 +494,14 @@ TEXT_D = """Výsledkový list                                       Unilabs Diag
 """
 
 
+def test_parse_euc_reference_range_followed_by_lab_comment():
+    text = ("Opis výsledku\nProvádějící laboratoř:   123456 Nějaká Lab. - biochemie\n"
+            "07.01.2026   1608/OKBH/07      30461    FIB-4 index                  1,57                   0,00-1,30 střední riziko ja-\n"
+            "                                                                                                      terní fibrózy\n")
+    r = by_name(labs.parse_lab_text(text))["FIB-4 index"]
+    assert (r["value"], r["unit"], r["ref_low"], r["ref_high"]) == (1.57, "", 0.0, 1.3)
+
+
 def test_parse_euc_layout_with_row_dates_and_unit_normalization():
     p = labs.parse_lab_text(TEXT_C)
     r = by_name(p)

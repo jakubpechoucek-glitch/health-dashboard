@@ -28,7 +28,9 @@ referenční meze a ukáže **náhled**. Uloží se až po tvém potvrzení. PDF
 ## Záložka Krevní rozbory
 
 Stránka má tři záložky: **Garmin**, **Krevní rozbory**, **Události a data**. Rozbory jsou v samostatné záložce a ukazují všechny ukazatele
-seskupené (ledviny, elektrolyty, játra, lipidy, cukr, krevní obraz, prostata, moč).
+seskupené (tělo a krevní tlak, moč, stolice, ledviny, elektrolyty, játra, lipidy, cukr, krevní obraz, prostata, štítná žláza,
+infekce a nádorové markery, srdce, kosti a složení těla z denzitometrie). Kromě krevních rozborů se sem ukládají i číselné výsledky
+prohlídek (hmotnost, tlak, zátěžový test, EKG, echo, denzitometrie), aby šly sledovat v čase stejně jako rozbory.
 
 U každého ukazatele je:
 
@@ -44,7 +46,7 @@ Nahoře jsou dlaždice-filtry (všechny / mimo rozmezí / zlepšeno / zhoršeno)
 
 Každý ukazatel má pod sebou rozbalovací **„Co to je“**: celý název (např. AST = aspartátaminotransferáza), co se měří a s čím obecně
 může souviset vyšší nebo nižší hodnota. Tlačítko **Rozbalit vysvětlivky** rozbalí všechny najednou. Texty jsou ve slovníku `VYSVETLENI`
-v `index.html` a pokrývají všech 46 ukazatelů z dosavadních listů (včetně moči). U neznámého ukazatele se zobrazí, že vysvětlení zatím není.
+v `index.html` a pokrývají všechny ukazatele z dosavadních listů a vyšetření (včetně moči, stolice a denzitometrie). U neznámého ukazatele se zobrazí, že vysvětlení zatím není.
 Jde o obecnou informaci pro orientaci, ne o výklad konkrétního výsledku.
 
 ### Interpretace ukazatele

@@ -165,10 +165,10 @@ def _parse_euc(text: str) -> dict:
             continue
         unit, lo, hi = "", None, None
         for part in parts[1:]:
-            ref = _REF.fullmatch(part)
-            if ref:
+            ref = _REF.match(part)                                         # rozmezí, za ním může být komentář laboratoře
+            if ref and (ref.end() == len(part) or part[ref.end()] == " "):
                 lo, hi = _f(ref.group(1)), _f(ref.group(2))
-            elif not unit:
+            elif not unit and lo is None:
                 unit = part
         num = _NUM.fullmatch(value_tok)
         value, vtext, prefix = (_f(num.group(2)), "", num.group(1)) if num else (None, " ".join([value_tok] + ([unit] if unit and not parts[1:] else [])), "")
